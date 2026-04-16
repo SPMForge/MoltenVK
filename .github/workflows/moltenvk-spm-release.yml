@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   semantic-release:
-    runs-on: macos-14
+    runs-on: macos-15
     defaults:
       run:
         shell: bash
@@ -32,6 +32,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
 
       - name: Install release dependencies
         run: npm ci --prefix SwiftPackage
