@@ -26,6 +26,7 @@ jobs:
         with:
           node-version: "24"
           cache: npm
+          cache-dependency-path: SwiftPackage/package-lock.json
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -33,7 +34,7 @@ jobs:
           python-version: "3.11"
 
       - name: Install release dependencies
-        run: npm ci
+        run: npm ci --prefix SwiftPackage
 
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
@@ -41,4 +42,4 @@ jobs:
       - name: Publish semantic release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
+        run: npx --prefix SwiftPackage semantic-release --extends ./SwiftPackage/release.config.cjs

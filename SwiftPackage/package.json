@@ -7,8 +7,8 @@
     "node": "^24.10.0 || >=25.0.0"
   },
   "scripts": {
-    "release": "semantic-release",
-    "verify:swift-package": "./tests/verify_swift_package_integration.sh"
+    "release": "semantic-release --extends ./release.config.cjs",
+    "verify:swift-package": "../tests/verify_swift_package_integration.sh"
   },
   "devDependencies": {
     "@semantic-release/commit-analyzer": "13.0.1",

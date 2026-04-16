@@ -1,6 +1,6 @@
 This directory is reserved for Swift Package export artifacts.
 
-`build_swift_package.sh` populates:
+`Scripts/SwiftPackage/build_swift_package.sh` populates:
 
 - `MoltenVK.xcframework` for Swift package consumers
 - `MoltenVK-static.xcframework` for native static-link consumers such as `framework-ncnn`

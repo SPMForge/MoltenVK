@@ -5,7 +5,7 @@ import PackageDescription
 
 let packageVersionFile = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
-    .appendingPathComponent("PackageVersion.txt")
+    .appendingPathComponent("SwiftPackage/PackageVersion.txt")
     .path
 let localArtifactPath = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()

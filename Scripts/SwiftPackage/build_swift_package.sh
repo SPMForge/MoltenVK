@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 ARTIFACTS_DIR="$ROOT_DIR/Artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
 PACKAGE_PROJECT="$ROOT_DIR/MoltenVKPackaging.xcodeproj"

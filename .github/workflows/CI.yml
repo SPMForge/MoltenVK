@@ -44,10 +44,10 @@ jobs:
 
       - name: Prewarm MoltenVK dependencies
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
-        run: ./build_swift_package_dependencies.sh
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
 
       - name: Build Swift Package artifacts
-        run: SKIP_DEPENDENCY_FETCH=1 ./build_swift_package.sh
+        run: SKIP_DEPENDENCY_FETCH=1 ./Scripts/SwiftPackage/build_swift_package.sh
 
       - name: Validate Swift Package manifest
         run: swift package describe >/dev/null

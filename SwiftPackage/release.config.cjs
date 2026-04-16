@@ -8,14 +8,14 @@ module.exports = {
     [
       "@semantic-release/exec",
       {
-        prepareCmd: "./Scripts/prepare_semantic_release.sh ${nextRelease.version}"
+        prepareCmd: "./Scripts/SwiftPackage/prepare_semantic_release.sh ${nextRelease.version}"
       }
     ],
     [
       "@semantic-release/git",
       {
         assets: [
-          "PackageVersion.txt",
+          "SwiftPackage/PackageVersion.txt",
           "Artifacts/MoltenVK.xcframework.checksum",
           "Artifacts/MoltenVK-static.xcframework.checksum",
           "Artifacts/MoltenVKHeaders.checksum"
