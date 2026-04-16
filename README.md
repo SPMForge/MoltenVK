@@ -12,7 +12,7 @@ Copyright (c) 2015-2025 [The Brenwill Workshop Ltd.](http://www.brenwill.com)
 [comment]: # "This document is written in Markdown (http://en.wikipedia.org/wiki/Markdown) format."
 [comment]: # "For best results, use a Markdown reader."
 
-![Build Status](https://github.com/KhronosGroup/MoltenVK/workflows/CI/badge.svg)
+![Build Status](https://github.com/KhronosGroup/MoltenVK/actions/workflows/CI.yml/badge.svg)
 
 Swift Package distribution
 --------------------------
@@ -22,6 +22,7 @@ This repository also exposes a local-and-remote Swift Package entry point:
 - `Package.swift` resolves the local `Artifacts/MoltenVK.xcframework` when it exists
 - otherwise it falls back to a release asset at `releases/download/MoltenVK-v<version>/MoltenVK.xcframework.zip`
 - `SwiftPackage/` contains the semantic-release metadata and the published package version state
+- `SwiftPackage/ReleaseRepository.txt` tracks which GitHub repository hosts the SwiftPM binary release assets
 - `SwiftPackage/PackageVersion.txt` is written during semantic release and controls the release tag version used by the package manifest
 - `Scripts/SwiftPackage/build_swift_package.sh` generates the xcframeworks, the zip, and the checksum file used by SwiftPM
 - `.github/workflows/moltenvk-spm-release.yml` now runs `semantic-release` on `main`, creates the `MoltenVK-v<version>` tag, commits the updated checksum metadata, and uploads the release assets

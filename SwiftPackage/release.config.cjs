@@ -1,6 +1,5 @@
 module.exports = {
   branches: ["main"],
-  repositoryUrl: "https://github.com/RbBtSn0w/MoltenVK.git",
   tagFormat: "MoltenVK-v${version}",
   plugins: [
     "@semantic-release/commit-analyzer",
@@ -15,6 +14,7 @@ module.exports = {
       "@semantic-release/git",
       {
         assets: [
+          "SwiftPackage/ReleaseRepository.txt",
           "SwiftPackage/PackageVersion.txt",
           "Artifacts/MoltenVK.xcframework.checksum",
           "Artifacts/MoltenVK-static.xcframework.checksum",
