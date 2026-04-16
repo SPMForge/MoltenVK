@@ -21,6 +21,7 @@ assert_not_contains() {
 }
 
 assert_file "Package.swift"
+assert_contains "Package.swift" "// swift-tools-version: 5.10"
 assert_contains "Package.swift" "name: \"MoltenVK\""
 assert_contains "Package.swift" "SwiftPackage/PackageVersion.txt"
 assert_contains "Package.swift" "SwiftPackage/ReleaseRepository.txt"
