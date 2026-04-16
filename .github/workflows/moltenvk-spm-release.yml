@@ -1,0 +1,53 @@
+name: MoltenVK Swift Package Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  semantic-release:
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: SwiftPackage/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
+      - name: Install release dependencies
+        run: npm ci --prefix SwiftPackage
+
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Publish semantic release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx --prefix SwiftPackage semantic-release --extends ./SwiftPackage/release.config.cjs

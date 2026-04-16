@@ -1,5 +1,8 @@
 # MoltenVK runtime build
 /Package
+/Artifacts/*
+!/Artifacts/README.md
+!/Artifacts/*.checksum
 
 # MoltenVK dependencies
 /External
@@ -20,6 +23,7 @@ project.xcworkspace/
 # build products
 build/
 *.[oa]
+node_modules/
 
 # Other source repository archive directories (protects when importing)
 .hg

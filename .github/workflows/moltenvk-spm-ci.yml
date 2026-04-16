@@ -1,0 +1,92 @@
+name: MoltenVK Swift Package CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  spm-package:
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
+      - name: Prep cache key
+        id: prep
+        run: |
+          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoltenVK external dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            External/build
+            !External/build/Intermediates
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ hashFiles('fetchDependencies', 'ExternalRevisions/**', 'ExternalDependencies.xcodeproj/**', 'Scripts/**') }}
+
+      - name: Verify package layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Prewarm MoltenVK dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+
+      - name: Build Swift Package artifacts
+        run: SKIP_DEPENDENCY_FETCH=1 ./Scripts/SwiftPackage/build_swift_package.sh
+
+      - name: Validate Swift Package manifest
+        run: swift package describe >/dev/null
+
+      - name: Verify generated package assets
+        run: |
+          test -f Artifacts/MoltenVK.xcframework.zip
+          test -f Artifacts/MoltenVK.xcframework.checksum
+          test -f Artifacts/MoltenVK-static.xcframework.zip
+          test -f Artifacts/MoltenVK-static.xcframework.checksum
+          test -f Artifacts/MoltenVKHeaders.zip
+          test -f Artifacts/MoltenVKHeaders.checksum
+          test -d Artifacts/MoltenVK.xcframework
+          test -d Artifacts/MoltenVK-static.xcframework
+          swift package compute-checksum Artifacts/MoltenVK.xcframework.zip >/tmp/moltenvk.checksum
+          diff -u Artifacts/MoltenVK.xcframework.checksum /tmp/moltenvk.checksum
+          swift package compute-checksum Artifacts/MoltenVK-static.xcframework.zip >/tmp/moltenvk-static.checksum
+          diff -u Artifacts/MoltenVK-static.xcframework.checksum /tmp/moltenvk-static.checksum
+          swift package compute-checksum Artifacts/MoltenVKHeaders.zip >/tmp/moltenvk-headers.checksum
+          diff -u Artifacts/MoltenVKHeaders.checksum /tmp/moltenvk-headers.checksum
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: moltenvk-spm-artifacts
+          path: |
+            Artifacts/MoltenVK.xcframework.zip
+            Artifacts/MoltenVK.xcframework.checksum
+            Artifacts/MoltenVK-static.xcframework.zip
+            Artifacts/MoltenVK-static.xcframework.checksum
+            Artifacts/MoltenVKHeaders.zip
+            Artifacts/MoltenVKHeaders.checksum
+            Artifacts/MoltenVK.xcframework
+            Artifacts/MoltenVK-static.xcframework
