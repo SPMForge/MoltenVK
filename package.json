@@ -1,0 +1,21 @@
+{
+  "name": "moltenvk-release",
+  "private": true,
+  "description": "semantic-release automation for MoltenVK Swift Package artifacts",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": "^24.10.0 || >=25.0.0"
+  },
+  "scripts": {
+    "release": "semantic-release",
+    "verify:swift-package": "./tests/verify_swift_package_integration.sh"
+  },
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "13.0.1",
+    "@semantic-release/exec": "7.1.0",
+    "@semantic-release/git": "10.0.1",
+    "@semantic-release/github": "12.0.6",
+    "@semantic-release/release-notes-generator": "14.1.0",
+    "semantic-release": "25.0.3"
+  }
+}
