@@ -42,10 +42,11 @@ assert_file "Scripts/SwiftPackage/common.sh"
 assert_file "Scripts/SwiftPackage/build_swift_package.sh"
 assert_file "Scripts/SwiftPackage/build_swift_package_dependencies.sh"
 assert_file "Scripts/SwiftPackage/render_package_manifest.py"
+assert_file "Scripts/SwiftPackage/validate_mergeable_xcframework.py"
 assert_contains "Scripts/SwiftPackage/build_swift_package_dependencies.sh" "fetchDependencies"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "prepare_patched_swift_package_workspace"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "archive_dynamic_framework"
-assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "validate_mergeable_xcframework.py"
+assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "MOLTENVK_MERGEABLE_VALIDATOR_PATH"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "render_package_manifest.py"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "MoltenVK-macOS-dynamic"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "MoltenVK-iOS-dynamic"
@@ -58,6 +59,8 @@ assert_contains "Scripts/SwiftPackage/common.sh" "A93903C01C57E9ED00FE90DC"
 assert_contains "Scripts/SwiftPackage/common.sh" "xcodebuild archive"
 assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_DYNAMIC_ARTIFACT_NAME=\"MoltenVK.xcframework\""
 assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_STATIC_ARTIFACT_NAME=\"MoltenVK-static.xcframework\""
+assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_MERGEABLE_VALIDATOR_PATH"
+assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_HEADERS_CHECKSUM_NAME"
 
 assert_dir "Sources/MoltenVK"
 assert_file "Sources/MoltenVK/dummy.c"
@@ -120,6 +123,17 @@ assert_not_contains "SwiftPackage/release.config.cjs" "repositoryUrl"
 assert_file "tests/verify_swift_package_artifacts.sh"
 assert_file "tests/verify_swift_package_consumer.sh"
 assert_contains "tests/verify_swift_package_consumer.sh" "MERGED_BINARY_TYPE=automatic"
-assert_contains "tests/verify_swift_package_artifacts.sh" "validate_mergeable_xcframework.py"
+assert_contains "tests/verify_swift_package_artifacts.sh" "MOLTENVK_MERGEABLE_VALIDATOR_PATH"
+
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-manifest-renderer.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+if python3 "$ROOT_DIR/Scripts/SwiftPackage/render_package_manifest.py" \
+    --version '1.0.0"' \
+    --release-repository "SPMForge/MoltenVK" \
+    --checksum "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" \
+    --output "$TMP_DIR/invalid.swift" >/dev/null 2>&1; then
+    echo "unexpected success when rendering an invalid Package.swift manifest" >&2
+    exit 1
+fi
 
 echo "MoltenVK Swift package integration layout verified"

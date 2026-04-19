@@ -3,7 +3,35 @@
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
+
+CHECKSUM_RE = re.compile(r"^[0-9a-f]{64}$")
+RELEASE_REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+
+
+def validate_release_repository(value: str) -> str:
+    repository = value.strip()
+    if not RELEASE_REPOSITORY_RE.fullmatch(repository):
+        raise ValueError(
+            "release repository must be a GitHub owner/repo identifier containing only letters, digits, '.', '_' or '-'."
+        )
+    return repository
+
+
+def validate_version(value: str) -> str:
+    version = value.strip()
+    if not SEMVER_RE.fullmatch(version):
+        raise ValueError("version must be a SemVer string like 1.2.3, 1.2.3-beta.1, or 1.2.3+build.5.")
+    return version
+
+
+def validate_checksum(value: str) -> str:
+    checksum = value.strip().lower()
+    if not CHECKSUM_RE.fullmatch(checksum):
+        raise ValueError("checksum must be a 64-character lowercase hexadecimal digest.")
+    return checksum
 
 
 def render_manifest(version: str, release_repository: str, checksum: str) -> str:
@@ -86,7 +114,14 @@ def main() -> int:
     parser.add_argument("--output", default="Package.swift", help="Manifest output path.")
     args = parser.parse_args()
 
-    manifest = render_manifest(args.version.strip(), args.release_repository.strip(), args.checksum.strip())
+    try:
+        manifest = render_manifest(
+            validate_version(args.version),
+            validate_release_repository(args.release_repository),
+            validate_checksum(args.checksum),
+        )
+    except ValueError as error:
+        parser.error(str(error))
     output_path = Path(args.output)
     output_path.write_text(manifest)
     return 0

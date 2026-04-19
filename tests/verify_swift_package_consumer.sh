@@ -46,7 +46,7 @@ EOF
         -destination 'generic/platform=macOS' \
         -derivedDataPath "$TMP_DIR/DerivedData-Debug" \
         CODE_SIGNING_ALLOWED=NO \
-        build >/tmp/moltenvk-consumer-debug.log
+        build >"$TMP_DIR/moltenvk-consumer-debug.log"
 )
 
 (
@@ -58,8 +58,7 @@ EOF
         -derivedDataPath "$TMP_DIR/DerivedData-Release" \
         CODE_SIGNING_ALLOWED=NO \
         MERGED_BINARY_TYPE=automatic \
-        build >/tmp/moltenvk-consumer-release.log
+        build >"$TMP_DIR/moltenvk-consumer-release.log"
 )
 
 echo "MoltenVK Swift package consumer smoke tests verified"
-

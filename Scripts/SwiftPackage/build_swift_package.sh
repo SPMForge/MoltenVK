@@ -13,7 +13,7 @@ DYNAMIC_ZIP="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.zip"
 HEADERS_ZIP="$ARTIFACTS_DIR/$MOLTENVK_HEADERS_ARCHIVE_NAME"
 STATIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME.checksum"
 DYNAMIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.checksum"
-HEADERS_CHECKSUM_FILE="$ARTIFACTS_DIR/MoltenVKHeaders.checksum"
+HEADERS_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_HEADERS_CHECKSUM_NAME"
 
 run_packaging_build() {
     local scheme="$1"
@@ -39,6 +39,7 @@ require_path "$ROOT_DIR/fetchDependencies"
 require_path "$MOLTENVK_PROJECT"
 require_path "$MOLTENVK_PACKAGING_PROJECT"
 require_path "$MOLTENVK_INCLUDE_DIR"
+require_path "$MOLTENVK_MERGEABLE_VALIDATOR_PATH"
 
 parse_requested_platforms "$@"
 
@@ -91,27 +92,27 @@ rm -f "$DYNAMIC_ZIP" "$STATIC_ZIP" "$HEADERS_ZIP" "$DYNAMIC_CHECKSUM_FILE" "$STA
 
 xcframework_args=()
 validator_args=()
+while IFS= read -r validator_arg; do
+    [[ -n "$validator_arg" ]] && validator_args+=("$validator_arg")
+done < <(dynamic_validator_args)
 
 if (( BUILD_MACOS )); then
     require_path "$archives_dir/macos.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
     xcframework_args+=(-framework "$archives_dir/macos.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
-    validator_args+=(--require-platform macos)
 fi
 
 if (( BUILD_IOS )); then
     require_path "$archives_dir/ios.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
     xcframework_args+=(-framework "$archives_dir/ios.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
-    validator_args+=(--require-platform ios)
 fi
 
 if (( BUILD_IOS_SIM )); then
     require_path "$archives_dir/ios-simulator.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
     xcframework_args+=(-framework "$archives_dir/ios-simulator.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
-    validator_args+=(--require-platform ios-simulator)
 fi
 
 xcodebuild -create-xcframework "${xcframework_args[@]}" -output "$DYNAMIC_DEST"
-python3 /Users/snow/.codex/skills/apple-spm-binary-distribution/scripts/validate_mergeable_xcframework.py \
+python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" \
     "$DYNAMIC_DEST" \
     "${validator_args[@]}"
 

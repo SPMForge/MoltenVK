@@ -12,9 +12,11 @@ MOLTENVK_INCLUDE_DIR="$ROOT_DIR/MoltenVK/include"
 MOLTENVK_DYNAMIC_ARTIFACT_NAME="MoltenVK.xcframework"
 MOLTENVK_STATIC_ARTIFACT_NAME="MoltenVK-static.xcframework"
 MOLTENVK_HEADERS_ARCHIVE_NAME="MoltenVKHeaders.zip"
+MOLTENVK_HEADERS_CHECKSUM_NAME="${MOLTENVK_HEADERS_ARCHIVE_NAME%.zip}.checksum"
 MOLTENVK_RELEASE_TAG_PREFIX="MoltenVK-v"
 MOLTENVK_RELEASE_REPOSITORY_FILE="$SWIFT_PACKAGE_DIR/ReleaseRepository.txt"
 MOLTENVK_PACKAGE_VERSION_FILE="$SWIFT_PACKAGE_DIR/PackageVersion.txt"
+MOLTENVK_MERGEABLE_VALIDATOR_PATH="${MVK_MERGEABLE_VALIDATOR_PATH:-$ROOT_DIR/Scripts/SwiftPackage/validate_mergeable_xcframework.py}"
 
 BUILD_MACOS=0
 BUILD_IOS=0
@@ -144,7 +146,9 @@ dynamic_validator_args() {
     (( BUILD_MACOS )) && args+=(--require-platform macos)
     (( BUILD_IOS )) && args+=(--require-platform ios)
     (( BUILD_IOS_SIM )) && args+=(--require-platform ios-simulator)
-    printf '%s\n' "${args[@]}"
+    if (( ${#args[@]} )); then
+        printf '%s\n' "${args[@]}"
+    fi
 }
 
 patch_macos_shader_converter_dependency() {
