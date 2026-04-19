@@ -14,6 +14,7 @@ module.exports = {
       "@semantic-release/git",
       {
         assets: [
+          "Package.swift",
           "SwiftPackage/ReleaseRepository.txt",
           "SwiftPackage/PackageVersion.txt",
           "Artifacts/MoltenVK.xcframework.checksum",

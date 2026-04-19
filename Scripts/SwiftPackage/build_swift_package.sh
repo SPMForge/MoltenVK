@@ -2,60 +2,25 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
-ARTIFACTS_DIR="$ROOT_DIR/Artifacts"
-CONFIGURATION="${CONFIGURATION:-Release}"
-PACKAGE_PROJECT="$ROOT_DIR/MoltenVKPackaging.xcodeproj"
-PACKAGE_DIR="$ROOT_DIR/Package/$CONFIGURATION/MoltenVK"
-STATIC_SOURCE="$PACKAGE_DIR/static/MoltenVK.xcframework"
-DYNAMIC_SOURCE="$PACKAGE_DIR/dynamic/MoltenVK.xcframework"
-HEADERS_SOURCE="$ROOT_DIR/MoltenVK/include"
-STATIC_DEST="$ARTIFACTS_DIR/MoltenVK-static.xcframework"
-DYNAMIC_DEST="$ARTIFACTS_DIR/MoltenVK.xcframework"
-STATIC_ZIP="$ARTIFACTS_DIR/MoltenVK-static.xcframework.zip"
-DYNAMIC_ZIP="$ARTIFACTS_DIR/MoltenVK.xcframework.zip"
-HEADERS_ZIP="$ARTIFACTS_DIR/MoltenVKHeaders.zip"
-STATIC_CHECKSUM_FILE="$ARTIFACTS_DIR/MoltenVK-static.xcframework.checksum"
-DYNAMIC_CHECKSUM_FILE="$ARTIFACTS_DIR/MoltenVK.xcframework.checksum"
+source "$(cd "$(dirname "$0")" && pwd)/common.sh"
+
+PACKAGE_OUTPUT_DIR="$ROOT_DIR/Package/$CONFIGURATION/MoltenVK"
+STATIC_SOURCE="$PACKAGE_OUTPUT_DIR/static/MoltenVK.xcframework"
+STATIC_DEST="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME"
+DYNAMIC_DEST="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME"
+STATIC_ZIP="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME.zip"
+DYNAMIC_ZIP="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.zip"
+HEADERS_ZIP="$ARTIFACTS_DIR/$MOLTENVK_HEADERS_ARCHIVE_NAME"
+STATIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME.checksum"
+DYNAMIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.checksum"
 HEADERS_CHECKSUM_FILE="$ARTIFACTS_DIR/MoltenVKHeaders.checksum"
 
-DEPENDENCY_PLATFORMS=("$@")
-BUILD_MACOS=0
-BUILD_IOS=0
-BUILD_IOS_SIM=0
-
-log() {
-    printf '==> %s\n' "$1"
-}
-
-warn() {
-    printf 'warning: %s\n' "$1" >&2
-}
-
-fail() {
-    printf 'error: %s\n' "$1" >&2
-    exit 1
-}
-
-require_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "Missing required command: $1"
-}
-
-require_path() {
-    [[ -e "$1" ]] || fail "Missing required path: $1"
-}
-
-sdk_supports_platform() {
-    local sdk="$1"
-    xcrun --sdk "$sdk" --show-sdk-path >/dev/null 2>&1
-}
-
-run_package_build() {
+run_packaging_build() {
     local scheme="$1"
     local destination="$2"
 
     xcodebuild build \
-        -project "$PACKAGE_PROJECT" \
+        -project "$MOLTENVK_PACKAGING_PROJECT" \
         -scheme "$scheme" \
         -configuration "$CONFIGURATION" \
         -destination "$destination" \
@@ -68,102 +33,124 @@ require_command python3
 require_command git
 require_command cmake
 require_command swift
+require_command ditto
 
 require_path "$ROOT_DIR/fetchDependencies"
-require_path "$PACKAGE_PROJECT"
+require_path "$MOLTENVK_PROJECT"
+require_path "$MOLTENVK_PACKAGING_PROJECT"
+require_path "$MOLTENVK_INCLUDE_DIR"
 
-if [[ ${#DEPENDENCY_PLATFORMS[@]} -eq 0 ]]; then
-    BUILD_MACOS=1
-    DEPENDENCY_PLATFORMS=(--macos)
-
-    if sdk_supports_platform iphoneos; then
-        BUILD_IOS=1
-        DEPENDENCY_PLATFORMS+=(--ios)
-    else
-        warn "Skipping iOS device slice because the iPhoneOS SDK is not installed in this Xcode installation."
-    fi
-
-    if sdk_supports_platform iphonesimulator; then
-        BUILD_IOS_SIM=1
-        DEPENDENCY_PLATFORMS+=(--iossim)
-    else
-        warn "Skipping iOS simulator slice because the iPhoneSimulator SDK is not installed in this Xcode installation."
-    fi
-else
-    for platform in "${DEPENDENCY_PLATFORMS[@]}"; do
-        case "$platform" in
-            --all)
-                BUILD_MACOS=1
-                BUILD_IOS=1
-                BUILD_IOS_SIM=1
-                ;;
-            --macos)
-                BUILD_MACOS=1
-                ;;
-            --ios)
-                BUILD_IOS=1
-                ;;
-            --iossim)
-                BUILD_IOS_SIM=1
-                ;;
-        esac
-    done
-
-    (( BUILD_MACOS )) || fail "No supported Apple platform was requested. Use --macos, --ios, --iossim, or --all."
-
-    if (( BUILD_IOS )) && ! sdk_supports_platform iphoneos; then
-        fail "Requested --ios, but the iPhoneOS SDK is not installed."
-    fi
-
-    if (( BUILD_IOS_SIM )) && ! sdk_supports_platform iphonesimulator; then
-        fail "Requested --iossim, but the iPhoneSimulator SDK is not installed."
-    fi
-fi
+parse_requested_platforms "$@"
 
 if [[ "${SKIP_DEPENDENCY_FETCH:-0}" == "1" ]]; then
     require_path "$ROOT_DIR/External/build"
     log "Skipping MoltenVK dependency fetch because SKIP_DEPENDENCY_FETCH=1"
 else
-    log "Fetching MoltenVK dependencies"
-    "$ROOT_DIR/fetchDependencies" "${DEPENDENCY_PLATFORMS[@]}" --keep-cache
+    "$ROOT_DIR/Scripts/SwiftPackage/build_swift_package_dependencies.sh" "${REQUESTED_PLATFORM_FLAGS[@]}"
 fi
 
-log "Building MoltenVK package slices"
+local_workspace=""
+archives_dir=""
+cleanup() {
+    [[ -n "$local_workspace" ]] && rm -rf "$local_workspace"
+    [[ -n "$archives_dir" ]] && rm -rf "$archives_dir"
+}
+trap cleanup EXIT
+
+local_workspace="$(prepare_patched_swift_package_workspace)"
+archives_dir="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-swift-package-archives.XXXXXX")"
+
+log "Archiving mergeable MoltenVK runtime slices"
 if (( BUILD_MACOS )); then
-    run_package_build "MoltenVK Package (macOS only)" "generic/platform=macOS"
+    archive_dynamic_framework \
+        "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
+        "MoltenVK-macOS-dynamic" \
+        "generic/platform=macOS" \
+        "$archives_dir/macos.xcarchive"
 fi
 
 if (( BUILD_IOS )); then
-    run_package_build "MoltenVK Package (iOS only)" "generic/platform=iOS"
+    archive_dynamic_framework \
+        "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
+        "MoltenVK-iOS-dynamic" \
+        "generic/platform=iOS" \
+        "$archives_dir/ios.xcarchive"
 fi
 
 if (( BUILD_IOS_SIM )); then
-    run_package_build "MoltenVK Package (iOS only)" "generic/platform=iOS Simulator"
+    archive_dynamic_framework \
+        "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
+        "MoltenVK-iOS-dynamic" \
+        "generic/platform=iOS Simulator" \
+        "$archives_dir/ios-simulator.xcarchive"
+fi
+
+mkdir -p "$ARTIFACTS_DIR"
+rm -rf "$DYNAMIC_DEST" "$STATIC_DEST"
+rm -f "$DYNAMIC_ZIP" "$STATIC_ZIP" "$HEADERS_ZIP" "$DYNAMIC_CHECKSUM_FILE" "$STATIC_CHECKSUM_FILE" "$HEADERS_CHECKSUM_FILE"
+
+xcframework_args=()
+validator_args=()
+
+if (( BUILD_MACOS )); then
+    require_path "$archives_dir/macos.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
+    xcframework_args+=(-framework "$archives_dir/macos.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
+    validator_args+=(--require-platform macos)
+fi
+
+if (( BUILD_IOS )); then
+    require_path "$archives_dir/ios.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
+    xcframework_args+=(-framework "$archives_dir/ios.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
+    validator_args+=(--require-platform ios)
+fi
+
+if (( BUILD_IOS_SIM )); then
+    require_path "$archives_dir/ios-simulator.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
+    xcframework_args+=(-framework "$archives_dir/ios-simulator.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
+    validator_args+=(--require-platform ios-simulator)
+fi
+
+xcodebuild -create-xcframework "${xcframework_args[@]}" -output "$DYNAMIC_DEST"
+python3 /Users/snow/.codex/skills/apple-spm-binary-distribution/scripts/validate_mergeable_xcframework.py \
+    "$DYNAMIC_DEST" \
+    "${validator_args[@]}"
+
+log "Building legacy static MoltenVK XCFramework slices"
+if (( BUILD_MACOS )); then
+    run_packaging_build "MoltenVK Package (macOS only)" "generic/platform=macOS"
+fi
+
+if (( BUILD_IOS )); then
+    run_packaging_build "MoltenVK Package (iOS only)" "generic/platform=iOS"
+fi
+
+if (( BUILD_IOS_SIM )); then
+    run_packaging_build "MoltenVK Package (iOS only)" "generic/platform=iOS Simulator"
 fi
 
 require_path "$STATIC_SOURCE"
-require_path "$DYNAMIC_SOURCE"
-require_path "$HEADERS_SOURCE"
-
-mkdir -p "$ARTIFACTS_DIR"
-rm -rf "$STATIC_DEST" "$DYNAMIC_DEST"
 cp -R "$STATIC_SOURCE" "$STATIC_DEST"
-cp -R "$DYNAMIC_SOURCE" "$DYNAMIC_DEST"
 
-log "Packaging SPM download artifact"
-rm -f "$STATIC_ZIP" "$DYNAMIC_ZIP" "$HEADERS_ZIP" "$STATIC_CHECKSUM_FILE" "$DYNAMIC_CHECKSUM_FILE" "$HEADERS_CHECKSUM_FILE"
-ditto -c -k --keepParent "$STATIC_DEST" "$STATIC_ZIP"
+log "Packaging release artifacts"
 ditto -c -k --keepParent "$DYNAMIC_DEST" "$DYNAMIC_ZIP"
-ditto -c -k --keepParent "$HEADERS_SOURCE" "$HEADERS_ZIP"
-swift package compute-checksum "$STATIC_ZIP" > "$STATIC_CHECKSUM_FILE"
-swift package compute-checksum "$DYNAMIC_ZIP" > "$DYNAMIC_CHECKSUM_FILE"
-swift package compute-checksum "$HEADERS_ZIP" > "$HEADERS_CHECKSUM_FILE"
+ditto -c -k --keepParent "$STATIC_DEST" "$STATIC_ZIP"
+ditto -c -k --keepParent "$MOLTENVK_INCLUDE_DIR" "$HEADERS_ZIP"
 
-log "Wrote $STATIC_DEST"
+swift package compute-checksum "$DYNAMIC_ZIP" >"$DYNAMIC_CHECKSUM_FILE"
+swift package compute-checksum "$STATIC_ZIP" >"$STATIC_CHECKSUM_FILE"
+swift package compute-checksum "$HEADERS_ZIP" >"$HEADERS_CHECKSUM_FILE"
+
+python3 "$ROOT_DIR/Scripts/SwiftPackage/render_package_manifest.py" \
+    --version "$(read_package_version)" \
+    --release-repository "$(read_release_repository)" \
+    --checksum "$(tr -d '[:space:]' <"$DYNAMIC_CHECKSUM_FILE")" \
+    --output "$ROOT_DIR/Package.swift"
+
+swift package dump-package >/dev/null
+
 log "Wrote $DYNAMIC_DEST"
-log "Wrote $STATIC_ZIP"
+log "Wrote $STATIC_DEST"
 log "Wrote $DYNAMIC_ZIP"
+log "Wrote $STATIC_ZIP"
 log "Wrote $HEADERS_ZIP"
-log "Wrote $STATIC_CHECKSUM_FILE"
-log "Wrote $DYNAMIC_CHECKSUM_FILE"
-log "Wrote $HEADERS_CHECKSUM_FILE"
+log "Rendered $ROOT_DIR/Package.swift"

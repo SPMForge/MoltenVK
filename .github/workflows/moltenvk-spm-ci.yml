@@ -58,24 +58,13 @@ jobs:
         run: SKIP_DEPENDENCY_FETCH=1 ./Scripts/SwiftPackage/build_swift_package.sh
 
       - name: Validate Swift Package manifest
-        run: swift package describe >/dev/null
+        run: swift package dump-package >/dev/null
 
       - name: Verify generated package assets
-        run: |
-          test -f Artifacts/MoltenVK.xcframework.zip
-          test -f Artifacts/MoltenVK.xcframework.checksum
-          test -f Artifacts/MoltenVK-static.xcframework.zip
-          test -f Artifacts/MoltenVK-static.xcframework.checksum
-          test -f Artifacts/MoltenVKHeaders.zip
-          test -f Artifacts/MoltenVKHeaders.checksum
-          test -d Artifacts/MoltenVK.xcframework
-          test -d Artifacts/MoltenVK-static.xcframework
-          swift package compute-checksum Artifacts/MoltenVK.xcframework.zip >/tmp/moltenvk.checksum
-          diff -u Artifacts/MoltenVK.xcframework.checksum /tmp/moltenvk.checksum
-          swift package compute-checksum Artifacts/MoltenVK-static.xcframework.zip >/tmp/moltenvk-static.checksum
-          diff -u Artifacts/MoltenVK-static.xcframework.checksum /tmp/moltenvk-static.checksum
-          swift package compute-checksum Artifacts/MoltenVKHeaders.zip >/tmp/moltenvk-headers.checksum
-          diff -u Artifacts/MoltenVKHeaders.checksum /tmp/moltenvk-headers.checksum
+        run: ./tests/verify_swift_package_artifacts.sh
+
+      - name: Verify consumer smoke tests
+        run: ./tests/verify_swift_package_consumer.sh
 
       - name: Upload package artifacts
         uses: actions/upload-artifact@v4

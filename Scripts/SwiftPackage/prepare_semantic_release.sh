@@ -33,4 +33,6 @@ printf '%s\n' "$NEXT_VERSION" > "$ROOT_DIR/SwiftPackage/PackageVersion.txt"
 
 cd "$ROOT_DIR"
 ./Scripts/SwiftPackage/build_swift_package.sh
-swift package describe >/dev/null
+swift package dump-package >/dev/null
+./tests/verify_swift_package_artifacts.sh
+./tests/verify_swift_package_consumer.sh
