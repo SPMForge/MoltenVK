@@ -118,7 +118,7 @@ jobs:
                 echo "error: selection_mode=latest does not accept an explicit upstream_ref input." >&2
                 exit 1
               }
-              resolved_upstream_ref="$(resolve_requested_or_latest_upstream_ref "")"
+              resolved_upstream_ref="$(resolve_latest_upstream_ref)"
               target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
               ;;
             requested)

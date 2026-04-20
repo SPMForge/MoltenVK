@@ -91,7 +91,11 @@ jobs:
         id: upstream
         run: |
           source ./Scripts/SwiftPackage/source_acquisition.sh
-          resolved_ref="$(resolve_requested_or_latest_upstream_ref "${{ inputs.upstream_ref }}")"
+          if [[ -n "${{ inputs.upstream_ref }}" ]]; then
+            resolved_ref="$(resolve_requested_or_latest_upstream_ref "${{ inputs.upstream_ref }}")"
+          else
+            resolved_ref="$(resolve_latest_upstream_ref)"
+          fi
           echo "ref=${resolved_ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${resolved_ref}"
 

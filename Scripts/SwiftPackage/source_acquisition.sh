@@ -113,6 +113,15 @@ resolve_requested_or_latest_upstream_ref() {
     printf '%s\n' "$latest_ref"
 }
 
+resolve_latest_upstream_ref() {
+    fetch_upstream_tags
+
+    local latest_ref
+    latest_ref="$(list_stable_upstream_refs | tail -n 1)"
+    [[ -n "$latest_ref" ]] || sa_fail "Unable to determine the latest stable upstream tag from ${MOLTENVK_UPSTREAM_TAG_NAMESPACE}."
+    printf '%s\n' "$latest_ref"
+}
+
 export_upstream_snapshot() {
     local upstream_ref="$1"
     local destination="$2"

@@ -52,6 +52,13 @@ run_packaging_build() {
         GCC_PREPROCESSOR_DEFINITIONS='$inherited MVK_USE_METAL_PRIVATE_API=0'
 }
 
+scheme_exists() {
+    local project_path="$1"
+    local scheme="$2"
+
+    xcodebuild -list -project "$project_path" 2>/dev/null | grep -Fq "        $scheme"
+}
+
 require_command xcodebuild
 require_command xcrun
 require_command python3
@@ -88,25 +95,37 @@ archives_dir="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-swift-package-archives.XXXXX
 
 log "Archiving mergeable MoltenVK runtime slices"
 if (( BUILD_MACOS )); then
+    macos_dynamic_scheme="MoltenVK-macOS-dynamic"
+    if ! scheme_exists "$local_workspace/MoltenVK/MoltenVK.xcodeproj" "$macos_dynamic_scheme"; then
+        macos_dynamic_scheme="MoltenVK-macOS"
+    fi
     archive_dynamic_framework \
         "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
-        "MoltenVK-macOS-dynamic" \
+        "$macos_dynamic_scheme" \
         "generic/platform=macOS" \
         "$archives_dir/macos.xcarchive"
 fi
 
 if (( BUILD_IOS )); then
+    ios_dynamic_scheme="MoltenVK-iOS-dynamic"
+    if ! scheme_exists "$local_workspace/MoltenVK/MoltenVK.xcodeproj" "$ios_dynamic_scheme"; then
+        ios_dynamic_scheme="MoltenVK-iOS"
+    fi
     archive_dynamic_framework \
         "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
-        "MoltenVK-iOS-dynamic" \
+        "$ios_dynamic_scheme" \
         "generic/platform=iOS" \
         "$archives_dir/ios.xcarchive"
 fi
 
 if (( BUILD_IOS_SIM )); then
+    ios_sim_dynamic_scheme="MoltenVK-iOS-dynamic"
+    if ! scheme_exists "$local_workspace/MoltenVK/MoltenVK.xcodeproj" "$ios_sim_dynamic_scheme"; then
+        ios_sim_dynamic_scheme="MoltenVK-iOS"
+    fi
     archive_dynamic_framework \
         "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
-        "MoltenVK-iOS-dynamic" \
+        "$ios_sim_dynamic_scheme" \
         "generic/platform=iOS Simulator" \
         "$archives_dir/ios-simulator.xcarchive"
 fi
