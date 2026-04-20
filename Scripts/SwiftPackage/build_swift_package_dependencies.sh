@@ -38,7 +38,14 @@ require_path "$MOLTENVK_PACKAGING_PROJECT"
 
 parse_requested_platforms "$@"
 
+fetch_dependency_args=("${REQUESTED_PLATFORM_FLAGS[@]}")
+if "$ROOT_DIR/fetchDependencies" --help 2>&1 | grep -Fq -- "--keep-cache"; then
+    fetch_dependency_args+=(--keep-cache)
+else
+    warn "fetchDependencies does not support --keep-cache; continuing without it."
+fi
+
 log "Fetching MoltenVK dependencies for ${REQUESTED_PLATFORM_FLAGS[*]}"
-"$ROOT_DIR/fetchDependencies" "${REQUESTED_PLATFORM_FLAGS[@]}" --keep-cache
+"$ROOT_DIR/fetchDependencies" "${fetch_dependency_args[@]}"
 
 log "Prewarmed MoltenVK dependencies for configuration $CONFIGURATION"
