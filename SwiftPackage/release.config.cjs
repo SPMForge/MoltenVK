@@ -1,5 +1,10 @@
 module.exports = {
-  branches: ["main"],
+  branches: [
+    {
+      name: "main",
+      prerelease: "alpha"
+    }
+  ],
   tagFormat: "MoltenVK-v${version}",
   plugins: [
     "@semantic-release/commit-analyzer",

@@ -29,7 +29,8 @@ This repository also exposes a local-and-remote Swift Package entry point:
 - `SwiftPackage/PackageVersion.txt` is written during semantic release and controls the release tag version used by the package manifest
 - `.github/workflows/moltenvk-spm-ci.yml` rebuilds the artifacts and runs both artifact validation and a local consumer smoke test
 - `.github/workflows/moltenvk-spm-release.yml` runs `semantic-release` on `main`, creates the `MoltenVK-v<version>` tag, commits the updated manifest/checksum metadata, and uploads the release assets
-- release creation now depends on Conventional Commit style messages reaching `main` so `semantic-release` can determine the next version
+- the current release train stays on alpha prereleases, so semantic-release advances versions as `X.Y.Z-alpha.N` until the binary distribution flow is stable enough for final releases
+- release creation still depends on Conventional Commit style messages reaching `main` so `semantic-release` can determine the next prerelease bump
 
 When integrating this package into a Release configuration that enables merged binaries, set `MERGED_BINARY_TYPE=automatic` so Xcode can consume the mergeable `MoltenVK` binary without flattening it incorrectly.
 
