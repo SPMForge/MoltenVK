@@ -63,8 +63,9 @@ jobs:
           RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: |
           xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          upstream_tree_ref="refs/upstream-tags/${RESOLVED_UPSTREAM_REF}"
           upstream_inputs_hash="$(
-            git ls-tree -r "${RESOLVED_UPSTREAM_REF}" -- \
+            git ls-tree -r "${upstream_tree_ref}" -- \
               ExternalRevisions \
               Templates/spirv-tools/build.zip \
               fetchDependencies \
