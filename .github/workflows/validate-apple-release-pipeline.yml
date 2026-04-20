@@ -45,10 +45,32 @@ jobs:
             exit 1
           }
 
+      - name: Resolve upstream ref for validation
+        id: upstream
+        run: |
+          source ./Scripts/SwiftPackage/source_acquisition.sh
+          if [[ -n "${{ inputs.upstream_ref }}" ]]; then
+            resolved_ref="$(resolve_requested_or_latest_upstream_ref "${{ inputs.upstream_ref }}")"
+          else
+            resolved_ref="$(resolve_latest_upstream_ref)"
+          fi
+          echo "ref=${resolved_ref}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${resolved_ref}"
+
       - name: Prep cache key
         id: prep
+        env:
+          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: |
           xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          upstream_inputs_hash="$(
+            git ls-tree -r "${RESOLVED_UPSTREAM_REF}" -- \
+              ExternalRevisions \
+              Templates/spirv-tools/build.zip \
+              fetchDependencies \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
           cache_inputs_hash="$(
             git ls-files --stage -- \
               'Scripts/SwiftPackage' \
@@ -63,6 +85,7 @@ jobs:
             | awk '{print $1}'
           )"
           echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+          echo "upstream_inputs_hash=${upstream_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoltenVK external dependencies
@@ -78,26 +101,16 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.prep.outputs.cache_inputs_hash }}
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.cache_inputs_hash }}
 
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
 
       - name: Prewarm MoltenVK dependencies
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        env:
+          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
-
-      - name: Resolve upstream ref for validation
-        id: upstream
-        run: |
-          source ./Scripts/SwiftPackage/source_acquisition.sh
-          if [[ -n "${{ inputs.upstream_ref }}" ]]; then
-            resolved_ref="$(resolve_requested_or_latest_upstream_ref "${{ inputs.upstream_ref }}")"
-          else
-            resolved_ref="$(resolve_latest_upstream_ref)"
-          fi
-          echo "ref=${resolved_ref}" >> "$GITHUB_OUTPUT"
-          echo "Resolved upstream ref: ${resolved_ref}"
 
       - name: Build Swift Package artifacts
         env:

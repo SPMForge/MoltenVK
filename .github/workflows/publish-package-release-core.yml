@@ -44,50 +44,8 @@ jobs:
             exit 1
           }
 
-      - name: Prep cache key
-        id: prep
-        run: |
-          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
-          cache_inputs_hash="$(
-            git ls-files --stage -- \
-              'Scripts/SwiftPackage' \
-              'SwiftPackage' \
-              'Sources' \
-              'tests' \
-              '.github/workflows/validate-apple-release-pipeline.yml' \
-              '.github/workflows/publish-package-release-core.yml' \
-              '.github/workflows/publish-latest-upstream-alpha.yml' \
-              '.github/workflows/publish-upstream-release-manually.yml' \
-            | shasum -a 256 \
-            | awk '{print $1}'
-          )"
-          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
-          echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache MoltenVK external dependencies
-        id: cache-dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            External/cereal
-            External/Vulkan-Headers
-            External/SPIRV-Cross
-            External/SPIRV-Tools
-            External/Vulkan-Tools
-            External/Volk
-            External/build
-            !External/build/Intermediates
-          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.prep.outputs.cache_inputs_hash }}
-
-      - name: Verify release layout
-        run: ./tests/verify_swift_package_integration.sh
-
-      - name: Prewarm MoltenVK dependencies
-        if: steps.cache-dependencies.outputs.cache-hit != 'true'
-        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
-
-      - name: Resolve release target
-        id: release_target
+      - name: Resolve upstream ref
+        id: upstream
         env:
           INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
           INPUT_UPSTREAM_REF: ${{ inputs.upstream_ref }}
@@ -119,7 +77,6 @@ jobs:
                 exit 1
               }
               resolved_upstream_ref="$(resolve_latest_upstream_ref)"
-              target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
               ;;
             requested)
               [[ -n "${requested_upstream_ref}" ]] || {
@@ -127,6 +84,96 @@ jobs:
                 exit 1
               }
               resolved_upstream_ref="$(resolve_requested_or_latest_upstream_ref "${requested_upstream_ref}")"
+              ;;
+            *)
+              echo "error: Unsupported selection_mode: ${selection_mode}" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${resolved_upstream_ref}"
+
+      - name: Prep cache key
+        id: prep
+        env:
+          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: |
+          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          upstream_inputs_hash="$(
+            git ls-tree -r "${RESOLVED_UPSTREAM_REF}" -- \
+              ExternalRevisions \
+              Templates/spirv-tools/build.zip \
+              fetchDependencies \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
+          cache_inputs_hash="$(
+            git ls-files --stage -- \
+              'Scripts/SwiftPackage' \
+              'SwiftPackage' \
+              'Sources' \
+              'tests' \
+              '.github/workflows/validate-apple-release-pipeline.yml' \
+              '.github/workflows/publish-package-release-core.yml' \
+              '.github/workflows/publish-latest-upstream-alpha.yml' \
+              '.github/workflows/publish-upstream-release-manually.yml' \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
+          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+          echo "upstream_inputs_hash=${upstream_inputs_hash}" >> "$GITHUB_OUTPUT"
+          echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoltenVK external dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            External/cereal
+            External/Vulkan-Headers
+            External/SPIRV-Cross
+            External/SPIRV-Tools
+            External/Vulkan-Tools
+            External/Volk
+            External/build
+            !External/build/Intermediates
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.cache_inputs_hash }}
+
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Prewarm MoltenVK dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        env:
+          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+
+      - name: Resolve release target
+        id: release_target
+        env:
+          INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
+          INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: |
+          selection_mode="${INPUT_SELECTION_MODE}"
+          release_channel="${INPUT_RELEASE_CHANNEL}"
+          resolved_upstream_ref="${RESOLVED_UPSTREAM_REF}"
+
+          case "${release_channel}" in
+            alpha|stable)
+              ;;
+            *)
+              echo "error: Unsupported release_channel: ${release_channel}" >&2
+              exit 1
+              ;;
+          esac
+
+          case "${selection_mode}" in
+            latest)
+              target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
+              ;;
+            requested)
               if [[ "${release_channel}" == "alpha" ]]; then
                 target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
               else
