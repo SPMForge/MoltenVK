@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import subprocess
 import sys
@@ -66,9 +67,15 @@ def run_git(args: list[str]) -> str:
     return completed.stdout
 
 
-def list_release_tags(prefix: str) -> list[tuple[str, Version]]:
+def parse_release_identifiers(raw_identifiers: list[str], prefix: str) -> list[tuple[str, Version]]:
     tags: list[tuple[str, Version]] = []
-    for raw_tag in run_git(["tag", "--list", f"{prefix}*"]).splitlines():
+    seen: set[str] = set()
+    for raw_tag in raw_identifiers:
+        if raw_tag in seen:
+            continue
+        seen.add(raw_tag)
+        if not raw_tag.startswith(prefix):
+            continue
         version_text = raw_tag.removeprefix(prefix)
         try:
             parsed = parse_version(version_text)
@@ -88,17 +95,50 @@ def list_release_tags(prefix: str) -> list[tuple[str, Version]]:
     return tags
 
 
+def list_git_release_tags(prefix: str) -> list[str]:
+    return run_git(["tag", "--list", f"{prefix}*"]).splitlines()
+
+
+def list_github_release_tags(repo: str | None) -> list[str]:
+    if not repo:
+        return []
+
+    completed = subprocess.run(
+        ["gh", "release", "list", "--repo", repo, "--limit", "100", "--json", "tagName"],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    if completed.returncode != 0:
+        return []
+
+    try:
+        payload = json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return []
+
+    return [item["tagName"] for item in payload if isinstance(item, dict) and isinstance(item.get("tagName"), str)]
+
+
+def list_release_tags(prefix: str, repo: str | None) -> list[tuple[str, Version]]:
+    raw_identifiers = list_git_release_tags(prefix)
+    raw_identifiers.extend(list_github_release_tags(repo))
+    return parse_release_identifiers(raw_identifiers, prefix)
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute the next MoltenVK alpha release version for a specific upstream stable release.")
     parser.add_argument("--base-version", required=True, help="Stable upstream version such as 1.2.3.")
     parser.add_argument("--tag-prefix", default="MoltenVK-v")
+    parser.add_argument("--repo", default="", help="Optional GitHub repository in owner/name form to include existing releases in alpha version discovery.")
     args = parser.parse_args()
 
     base_version = parse_version(args.base_version)
     if base_version.is_alpha:
         fail(f"Base version must be stable, got pre-release: {base_version}")
 
-    release_tags = list_release_tags(args.tag_prefix)
+    release_tags = list_release_tags(args.tag_prefix, args.repo or None)
     matching_versions = [version for _, version in release_tags if version.core == base_version]
 
     if any(not version.is_alpha for version in matching_versions):

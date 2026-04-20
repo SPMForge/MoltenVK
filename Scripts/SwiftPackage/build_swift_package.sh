@@ -70,7 +70,6 @@ parse_requested_platforms "$@"
 
 if [[ "${SKIP_DEPENDENCY_FETCH:-0}" == "1" ]]; then
     require_path "$ROOT_DIR/External/build"
-    require_external_dependency_sources
     log "Skipping MoltenVK dependency fetch because SKIP_DEPENDENCY_FETCH=1"
 else
     "$ROOT_DIR/Scripts/SwiftPackage/build_swift_package_dependencies.sh" "${REQUESTED_PLATFORM_FLAGS[@]}"
