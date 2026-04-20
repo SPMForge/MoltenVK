@@ -12,6 +12,10 @@ assert_dir() {
     [[ -d "$ROOT_DIR/$1" ]] || { echo "missing directory: $1" >&2; exit 1; }
 }
 
+assert_executable() {
+    [[ -x "$ROOT_DIR/$1" ]] || { echo "missing executable bit: $1" >&2; exit 1; }
+}
+
 assert_missing() {
     [[ ! -e "$ROOT_DIR/$1" ]] || { echo "unexpected path: $1" >&2; exit 1; }
 }
@@ -122,6 +126,8 @@ assert_not_contains "SwiftPackage/release.config.cjs" "repositoryUrl"
 
 assert_file "tests/verify_swift_package_artifacts.sh"
 assert_file "tests/verify_swift_package_consumer.sh"
+assert_executable "tests/verify_swift_package_artifacts.sh"
+assert_executable "tests/verify_swift_package_consumer.sh"
 assert_contains "tests/verify_swift_package_consumer.sh" "MERGED_BINARY_TYPE=automatic"
 assert_contains "tests/verify_swift_package_artifacts.sh" "MOLTENVK_MERGEABLE_VALIDATOR_PATH"
 
