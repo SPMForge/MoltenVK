@@ -56,7 +56,12 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ hashFiles('Scripts/SwiftPackage/**', 'SwiftPackage/**', 'Sources/**', 'tests/**', '.github/workflows/moltenvk-spm-*.yml') }}
+          key: >-
+            ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{
+            hashFiles('Scripts/SwiftPackage/**') }}-${{
+            hashFiles('SwiftPackage/**') }}-${{ hashFiles('Sources/**') }}-${{
+            hashFiles('tests/**') }}-${{
+            hashFiles('.github/workflows/moltenvk-spm-*.yml') }}
 
       - name: Verify package layout
         run: ./tests/verify_swift_package_integration.sh
