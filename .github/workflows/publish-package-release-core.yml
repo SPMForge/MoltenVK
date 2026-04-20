@@ -1,0 +1,180 @@
+name: Publish Package Release Core
+
+on:
+  workflow_call:
+    inputs:
+      selection_mode:
+        required: true
+        type: string
+      upstream_ref:
+        required: false
+        type: string
+        default: ""
+      release_channel:
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Run shared publish pipeline
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
+      - name: Prep cache key
+        id: prep
+        run: |
+          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          cache_inputs_hash="$(
+            git ls-files --stage -- \
+              'Scripts/SwiftPackage' \
+              'SwiftPackage' \
+              'Sources' \
+              'tests' \
+              '.github/workflows/validate-apple-release-pipeline.yml' \
+              '.github/workflows/publish-package-release-core.yml' \
+              '.github/workflows/publish-latest-upstream-alpha.yml' \
+              '.github/workflows/publish-upstream-release-manually.yml' \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
+          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+          echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoltenVK external dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            External/cereal
+            External/Vulkan-Headers
+            External/SPIRV-Cross
+            External/SPIRV-Tools
+            External/Vulkan-Tools
+            External/Volk
+            External/build
+            !External/build/Intermediates
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.prep.outputs.cache_inputs_hash }}
+
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Prewarm MoltenVK dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+
+      - name: Resolve release target
+        id: release_target
+        env:
+          INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
+          INPUT_UPSTREAM_REF: ${{ inputs.upstream_ref }}
+          INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+        run: |
+          source ./Scripts/SwiftPackage/source_acquisition.sh
+
+          selection_mode="${INPUT_SELECTION_MODE}"
+          requested_upstream_ref="${INPUT_UPSTREAM_REF}"
+          release_channel="${INPUT_RELEASE_CHANNEL}"
+
+          case "${release_channel}" in
+            alpha|stable)
+              ;;
+            *)
+              echo "error: Unsupported release_channel: ${release_channel}" >&2
+              exit 1
+              ;;
+          esac
+
+          case "${selection_mode}" in
+            latest)
+              [[ "${release_channel}" == "alpha" ]] || {
+                echo "error: selection_mode=latest only supports alpha releases." >&2
+                exit 1
+              }
+              [[ -z "${requested_upstream_ref}" ]] || {
+                echo "error: selection_mode=latest does not accept an explicit upstream_ref input." >&2
+                exit 1
+              }
+              resolved_upstream_ref="$(resolve_requested_or_latest_upstream_ref "")"
+              target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
+              ;;
+            requested)
+              [[ -n "${requested_upstream_ref}" ]] || {
+                echo "error: selection_mode=requested requires an upstream_ref input." >&2
+                exit 1
+              }
+              resolved_upstream_ref="$(resolve_requested_or_latest_upstream_ref "${requested_upstream_ref}")"
+              if [[ "${release_channel}" == "alpha" ]]; then
+                target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
+              else
+                target_version="${resolved_upstream_ref#v}"
+              fi
+              ;;
+            *)
+              echo "error: Unsupported selection_mode: ${selection_mode}" >&2
+              exit 1
+              ;;
+          esac
+
+          echo "upstream_ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
+          echo "target_version=${target_version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${resolved_upstream_ref}"
+          echo "Resolved package version: ${target_version}"
+
+      - name: Verify release tag and release do not already exist
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.release_target.outputs.target_version }}
+        run: |
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/MoltenVK-v${TARGET_VERSION}" >/dev/null; then
+            echo "error: release tag already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+          if gh release view "MoltenVK-v${TARGET_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "error: release already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Prepare release artifacts
+        env:
+          SKIP_DEPENDENCY_FETCH: "1"
+          TARGET_VERSION: ${{ steps.release_target.outputs.target_version }}
+          MVK_UPSTREAM_REF: ${{ steps.release_target.outputs.upstream_ref }}
+          RELEASE_KIND: ${{ inputs.release_channel }}
+        run: |
+          if [[ "${RELEASE_KIND}" == "alpha" ]]; then
+            ./Scripts/SwiftPackage/prepare_alpha_release.sh "$TARGET_VERSION"
+          else
+            ./Scripts/SwiftPackage/prepare_manual_release.sh "$TARGET_VERSION"
+          fi
+
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ steps.release_target.outputs.target_version }}
+          RELEASE_KIND: ${{ inputs.release_channel }}
+        run: ./Scripts/SwiftPackage/publish_release.sh "$TARGET_VERSION" "$RELEASE_KIND"

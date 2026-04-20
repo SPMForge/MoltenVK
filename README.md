@@ -52,13 +52,16 @@ Build and release flow
 CI topology
 -----------
 
-- `.github/workflows/moltenvk-spm-ci.yml`
+- `.github/workflows/validate-apple-release-pipeline.yml`
   - non-publishing validation workflow
   - rebuilds artifacts from an exported upstream snapshot
   - validates manifest, artifacts, and consumer smoke tests
-- `.github/workflows/moltenvk-spm-release.yml`
-  - `push` to `main` publishes alpha releases only
-  - `workflow_dispatch` publishes stable releases only with explicit operator intent
+- `.github/workflows/publish-package-release-core.yml`
+  - shared reusable release workflow invoked by thin publish entrypoints
+- `.github/workflows/publish-latest-upstream-alpha.yml`
+  - `push` to `main` publishes the latest upstream alpha package release
+- `.github/workflows/publish-upstream-release-manually.yml`
+  - `workflow_dispatch` publishes the requested upstream tag as alpha or stable
 
 Consumer note
 -------------

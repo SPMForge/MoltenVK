@@ -1,0 +1,36 @@
+name: Publish Upstream Release Manually
+
+run-name: Manual ${{ inputs.release_channel }} publish for ${{ inputs.upstream_ref }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      upstream_ref:
+        description: Stable upstream MoltenVK tag to publish, for example v1.4.1
+        required: true
+        type: string
+      release_channel:
+        description: Publish the requested upstream tag as alpha or stable
+        required: true
+        default: alpha
+        type: choice
+        options:
+          - alpha
+          - stable
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-upstream-release-manually-${{ inputs.upstream_ref }}-${{ inputs.release_channel }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish requested upstream release
+    uses: ./.github/workflows/publish-package-release-core.yml
+    with:
+      selection_mode: requested
+      upstream_ref: ${{ inputs.upstream_ref }}
+      release_channel: ${{ inputs.release_channel }}
+    secrets: inherit
