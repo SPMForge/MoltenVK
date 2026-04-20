@@ -58,7 +58,19 @@ jobs:
         id: prep
         run: |
           xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          cache_inputs_hash="$(
+            git ls-files --stage -- \
+              'Scripts/SwiftPackage' \
+              'SwiftPackage' \
+              'Sources' \
+              'tests' \
+              '.github/workflows/moltenvk-spm-ci.yml' \
+              '.github/workflows/moltenvk-spm-release.yml' \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
           echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+          echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoltenVK external dependencies
         id: cache-dependencies
@@ -73,12 +85,7 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: >-
-            ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{
-            hashFiles('Scripts/SwiftPackage/**/*') }}-${{
-            hashFiles('SwiftPackage/**/*') }}-${{ hashFiles('Sources/**/*') }}-${{
-            hashFiles('tests/**/*') }}-${{
-            hashFiles('.github/workflows/moltenvk-spm-*.yml') }}
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.prep.outputs.cache_inputs_hash }}
 
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
@@ -196,7 +203,19 @@ jobs:
         id: prep
         run: |
           xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          cache_inputs_hash="$(
+            git ls-files --stage -- \
+              'Scripts/SwiftPackage' \
+              'SwiftPackage' \
+              'Sources' \
+              'tests' \
+              '.github/workflows/moltenvk-spm-ci.yml' \
+              '.github/workflows/moltenvk-spm-release.yml' \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
           echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+          echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Cache MoltenVK external dependencies
         id: cache-dependencies
@@ -211,12 +230,7 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: >-
-            ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{
-            hashFiles('Scripts/SwiftPackage/**/*') }}-${{
-            hashFiles('SwiftPackage/**/*') }}-${{ hashFiles('Sources/**/*') }}-${{
-            hashFiles('tests/**/*') }}-${{
-            hashFiles('.github/workflows/moltenvk-spm-*.yml') }}
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.prep.outputs.cache_inputs_hash }}
 
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
