@@ -21,6 +21,10 @@ jobs:
   release:
     name: Run shared publish pipeline
     runs-on: macos-15
+    env:
+      MVK_ENABLE_CCACHE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
     defaults:
       run:
         shell: bash
@@ -35,6 +39,15 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - name: Ensure ccache
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --version | head -n 1
+            exit 0
+          fi
+          brew install ccache
+          ccache --version | head -n 1
 
       - name: Require Swift 6 toolchain
         run: |
@@ -125,6 +138,15 @@ jobs:
           echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
           echo "upstream_inputs_hash=${upstream_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache compiler results
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-v1
+          restore-keys: |
+            ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-
+            ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-
 
       - name: Cache MoltenVK external dependencies
         id: cache-dependencies

@@ -31,6 +31,9 @@ BUILD_MACOS=0
 BUILD_IOS=0
 BUILD_IOS_SIM=0
 REQUESTED_PLATFORM_FLAGS=()
+CCACHE_BUILD_ARGS=()
+CCACHE_WRAPPER_DIR=""
+CCACHE_ENABLED=0
 
 log() {
     printf '==> %s\n' "$1"
@@ -43,6 +46,69 @@ warn() {
 fail() {
     printf 'error: %s\n' "$1" >&2
     exit 1
+}
+
+setup_ccache() {
+    CCACHE_BUILD_ARGS=()
+    CCACHE_ENABLED=0
+
+    [[ "${MVK_ENABLE_CCACHE:-0}" == "1" ]] || return
+
+    if ! command -v ccache >/dev/null 2>&1; then
+        warn "MVK_ENABLE_CCACHE=1 but ccache is unavailable; continuing without compiler cache."
+        return
+    fi
+
+    local ccache_dir="${CCACHE_DIR:-${MVK_CCACHE_DIR:-$ROOT_DIR/.ccache}}"
+    local ccache_max_size="${CCACHE_MAXSIZE:-2G}"
+    local ccache_base_dir="${MVK_WRAPPER_ROOT:-$ROOT_DIR}"
+    local real_clang
+    local real_clangxx
+
+    mkdir -p "$ccache_dir"
+    export CCACHE_DIR="$ccache_dir"
+    export CCACHE_BASEDIR="$ccache_base_dir"
+    export CCACHE_NOHASHDIR=1
+
+    real_clang="$(xcrun -f clang)"
+    real_clangxx="$(xcrun -f clang++)"
+    CCACHE_WRAPPER_DIR="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-ccache.XXXXXX")"
+
+    cat >"$CCACHE_WRAPPER_DIR/clang" <<EOF
+#!/bin/sh
+exec "$(command -v ccache)" "$real_clang" "\$@"
+EOF
+    cat >"$CCACHE_WRAPPER_DIR/clang++" <<EOF
+#!/bin/sh
+exec "$(command -v ccache)" "$real_clangxx" "\$@"
+EOF
+    chmod +x "$CCACHE_WRAPPER_DIR/clang" "$CCACHE_WRAPPER_DIR/clang++"
+
+    export CC="$CCACHE_WRAPPER_DIR/clang"
+    export CXX="$CCACHE_WRAPPER_DIR/clang++"
+    export OBJC="$CC"
+    export OBJCXX="$CXX"
+    export LDPLUSPLUS="$CXX"
+
+    CCACHE_BUILD_ARGS=(
+        "CC=$CC"
+        "CXX=$CXX"
+        "OBJC=$OBJC"
+        "OBJCXX=$OBJCXX"
+        "LDPLUSPLUS=$LDPLUSPLUS"
+    )
+
+    ccache --max-size "$ccache_max_size" >/dev/null 2>&1 || true
+    ccache --zero-stats >/dev/null 2>&1 || true
+    CCACHE_ENABLED=1
+    log "Enabled ccache at $CCACHE_DIR"
+}
+
+print_ccache_stats() {
+    (( CCACHE_ENABLED )) || return 0
+
+    log "ccache statistics"
+    ccache --show-stats || true
 }
 
 require_command() {
@@ -250,6 +316,7 @@ archive_dynamic_framework() {
         -configuration "$CONFIGURATION" \
         -destination "$destination" \
         -archivePath "$archive_path" \
+        "${CCACHE_BUILD_ARGS[@]}" \
         SKIP_INSTALL=NO \
         MERGEABLE_LIBRARY=YES \
         BUILD_LIBRARY_FOR_DISTRIBUTION=YES \

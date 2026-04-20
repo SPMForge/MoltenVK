@@ -49,6 +49,7 @@ run_packaging_build() {
         -scheme "$scheme" \
         -configuration "$CONFIGURATION" \
         -destination "$destination" \
+        "${CCACHE_BUILD_ARGS[@]}" \
         GCC_PREPROCESSOR_DEFINITIONS='$inherited MVK_USE_METAL_PRIVATE_API=0'
 }
 
@@ -74,6 +75,11 @@ require_path "$MOLTENVK_INCLUDE_DIR"
 require_path "$MOLTENVK_MERGEABLE_VALIDATOR_PATH"
 
 parse_requested_platforms "$@"
+setup_ccache
+
+cleanup_ccache() {
+    [[ -n "${CCACHE_WRAPPER_DIR:-}" ]] && rm -rf "$CCACHE_WRAPPER_DIR"
+}
 
 if [[ "${SKIP_DEPENDENCY_FETCH:-0}" == "1" ]]; then
     require_path "$ROOT_DIR/External/build"
@@ -87,6 +93,7 @@ archives_dir=""
 cleanup() {
     [[ -n "$local_workspace" ]] && rm -rf "$local_workspace"
     [[ -n "$archives_dir" ]] && rm -rf "$archives_dir"
+    cleanup_ccache
 }
 trap cleanup EXIT
 
@@ -201,3 +208,4 @@ log "Wrote $DYNAMIC_ZIP"
 log "Wrote $STATIC_ZIP"
 log "Wrote $HEADERS_ZIP"
 log "Rendered $ROOT_DIR/Package.swift"
+print_ccache_stats

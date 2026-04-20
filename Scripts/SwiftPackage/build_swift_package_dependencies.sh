@@ -11,6 +11,14 @@ require_command python3
 require_command git
 require_command cmake
 
+setup_ccache
+
+cleanup_ccache() {
+    [[ -n "${CCACHE_WRAPPER_DIR:-}" ]] && rm -rf "$CCACHE_WRAPPER_DIR"
+}
+
+trap cleanup_ccache EXIT
+
 if [[ "${MVK_SOURCE_WORKSPACE_ACTIVE:-0}" != "1" ]]; then
     workspace_info="$(prepare_upstream_wrapper_workspace "${MVK_UPSTREAM_REF:-}")"
     workspace_root="$(printf '%s\n' "$workspace_info" | sed -n '1p')"
@@ -49,3 +57,4 @@ log "Fetching MoltenVK dependencies for ${REQUESTED_PLATFORM_FLAGS[*]}"
 "$ROOT_DIR/fetchDependencies" "${fetch_dependency_args[@]}"
 
 log "Prewarmed MoltenVK dependencies for configuration $CONFIGURATION"
+print_ccache_stats
