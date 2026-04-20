@@ -1,0 +1,234 @@
+name: MoltenVK Swift Package Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target_version:
+        description: Stable upstream/package version to publish, for example 1.2.3
+        required: true
+        type: string
+      upstream_ref:
+        description: Optional upstream tag override, for example v1.2.3
+        required: false
+        type: string
+      release_intent:
+        description: Stable releases require explicit operator intent
+        required: true
+        type: choice
+        options:
+          - stable
+      confirm_stable:
+        description: Confirm that this run should create a stable public release from main
+        required: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  alpha-release:
+    if: github.event_name == 'push'
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
+      - name: Prep cache key
+        id: prep
+        run: |
+          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoltenVK external dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            External/cereal
+            External/Vulkan-Headers
+            External/SPIRV-Cross
+            External/SPIRV-Tools
+            External/Vulkan-Tools
+            External/Volk
+            External/build
+            !External/build/Intermediates
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ hashFiles('Scripts/SwiftPackage/**', 'SwiftPackage/**', 'Sources/**', 'tests/**', '.github/workflows/moltenvk-spm-*.yml') }}
+
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Prewarm MoltenVK dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+
+      - name: Resolve upstream stable ref
+        id: upstream
+        run: |
+          source ./Scripts/SwiftPackage/source_acquisition.sh
+          upstream_ref="$(resolve_requested_or_latest_upstream_ref "")"
+          upstream_version="${upstream_ref#v}"
+          echo "ref=${upstream_ref}" >> "$GITHUB_OUTPUT"
+          echo "version=${upstream_version}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${upstream_ref}"
+
+      - name: Compute next alpha version
+        id: next-alpha
+        run: |
+          next_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${{ steps.upstream.outputs.version }}")"
+          echo "version=${next_version}" >> "$GITHUB_OUTPUT"
+          echo "Next alpha version: ${next_version}"
+
+      - name: Verify alpha tag and release do not already exist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_VERSION: ${{ steps.next-alpha.outputs.version }}
+        run: |
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/MoltenVK-v${TARGET_VERSION}" >/dev/null; then
+            echo "error: alpha tag already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+          if gh release view "MoltenVK-v${TARGET_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "error: alpha release already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Prepare alpha release
+        env:
+          SKIP_DEPENDENCY_FETCH: "1"
+          TARGET_VERSION: ${{ steps.next-alpha.outputs.version }}
+          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: ./Scripts/SwiftPackage/prepare_alpha_release.sh "$TARGET_VERSION"
+
+      - name: Publish alpha release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TARGET_VERSION: ${{ steps.next-alpha.outputs.version }}
+        run: ./Scripts/SwiftPackage/publish_release.sh "$TARGET_VERSION" alpha
+
+  stable-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_VERSION: ${{ inputs.target_version }}
+      INPUT_UPSTREAM_REF: ${{ inputs.upstream_ref }}
+      RELEASE_INTENT: ${{ inputs.release_intent }}
+      CONFIRM_STABLE: ${{ inputs.confirm_stable }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
+      - name: Validate stable release request
+        run: |
+          [[ "$RELEASE_INTENT" == "stable" ]] || {
+            echo "error: release_intent must be stable for manual stable publishing." >&2
+            exit 1
+          }
+          [[ "$CONFIRM_STABLE" == "true" ]] || {
+            echo "error: confirm_stable must be true for manual stable publishing." >&2
+            exit 1
+          }
+          [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "error: target_version must be a stable semver such as 1.2.3." >&2
+            exit 1
+          }
+
+      - name: Verify stable tag and release do not already exist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/MoltenVK-v${TARGET_VERSION}" >/dev/null; then
+            echo "error: stable tag already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+          if gh release view "MoltenVK-v${TARGET_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "error: stable release already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Prep cache key
+        id: prep
+        run: |
+          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoltenVK external dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            External/cereal
+            External/Vulkan-Headers
+            External/SPIRV-Cross
+            External/SPIRV-Tools
+            External/Vulkan-Tools
+            External/Volk
+            External/build
+            !External/build/Intermediates
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ hashFiles('Scripts/SwiftPackage/**', 'SwiftPackage/**', 'Sources/**', 'tests/**', '.github/workflows/moltenvk-spm-*.yml') }}
+
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Prewarm MoltenVK dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+
+      - name: Resolve requested upstream ref
+        id: upstream
+        run: |
+          requested_ref="${INPUT_UPSTREAM_REF:-v${TARGET_VERSION}}"
+          echo "ref=${requested_ref}" >> "$GITHUB_OUTPUT"
+          echo "Resolved upstream ref: ${requested_ref}"
+
+      - name: Prepare manual stable release
+        env:
+          SKIP_DEPENDENCY_FETCH: "1"
+          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: ./Scripts/SwiftPackage/prepare_manual_release.sh "$TARGET_VERSION"
+
+      - name: Publish stable release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./Scripts/SwiftPackage/publish_release.sh "$TARGET_VERSION" stable
