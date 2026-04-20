@@ -23,7 +23,6 @@ MOLTENVK_REQUIRED_EXTERNAL_SOURCE_PATHS=(
     "$ROOT_DIR/External/cereal/include/cereal/cereal.hpp"
     "$ROOT_DIR/External/Vulkan-Headers/registry/vk.xml"
     "$ROOT_DIR/External/SPIRV-Cross/spirv.hpp"
-    "$ROOT_DIR/External/SPIRV-Tools/external/spirv-headers/include/spirv/unified1/spirv.hpp"
     "$ROOT_DIR/External/Vulkan-Tools"
     "$ROOT_DIR/External/Volk/volk.h"
 )
@@ -166,6 +165,16 @@ require_external_dependency_sources() {
     for required_path in "${MOLTENVK_REQUIRED_EXTERNAL_SOURCE_PATHS[@]}"; do
         require_path "$required_path"
     done
+
+    if [[ -e "$ROOT_DIR/External/SPIRV-Tools/external/spirv-headers/include/spirv/unified1/spirv.hpp" ]]; then
+        return
+    fi
+
+    if [[ -e "$ROOT_DIR/Templates/spirv-tools/build.zip" ]]; then
+        return
+    fi
+
+    fail "Missing SPIRV-Tools header source. Expected either External/SPIRV-Tools/external/spirv-headers/include/spirv/unified1/spirv.hpp or Templates/spirv-tools/build.zip"
 }
 
 patch_macos_shader_converter_dependency() {

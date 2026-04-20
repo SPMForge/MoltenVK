@@ -107,6 +107,7 @@ jobs:
       - name: Compute next alpha version
         id: next-alpha
         run: |
+          git fetch --force --tags origin
           next_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${{ steps.upstream.outputs.version }}")"
           echo "version=${next_version}" >> "$GITHUB_OUTPUT"
           echo "Next alpha version: ${next_version}"
