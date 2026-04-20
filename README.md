@@ -7,7 +7,7 @@ Repository architecture
 -----------------------
 
 - The wrapper repo owns the Swift Package contract, release workflows, validation workflows, and generated `Package.swift`.
-- Upstream source ownership remains with `KhronosGroup/MoltenVK`.
+- Upstream source ownership remains with [KhronosGroup/MoltenVK](https://github.com/KhronosGroup/MoltenVK).
 - CI does not treat this checkout as the source of truth for MoltenVK source code.
 - CI fetches upstream tags into `refs/upstream-tags/*`, exports the requested upstream snapshot, and builds release artifacts from that exported snapshot.
 - The in-repo upstream source tree has been removed; if local debugging against upstream source is needed, fetch or clone upstream separately.
