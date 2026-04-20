@@ -9,6 +9,7 @@ from pathlib import Path
 CHECKSUM_RE = re.compile(r"^[0-9a-f]{64}$")
 RELEASE_REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
+DEPLOYMENT_TARGET_RE = re.compile(r"^[0-9]+$")
 
 
 def validate_release_repository(value: str) -> str:
@@ -34,7 +35,20 @@ def validate_checksum(value: str) -> str:
     return checksum
 
 
-def render_manifest(version: str, release_repository: str, checksum: str) -> str:
+def validate_deployment_target(value: str, platform_name: str) -> str:
+    target = value.strip()
+    if not DEPLOYMENT_TARGET_RE.fullmatch(target):
+        raise ValueError(f"{platform_name} deployment target must be a whole major version such as 11 or 14.")
+    return target
+
+
+def render_manifest(
+    version: str,
+    release_repository: str,
+    checksum: str,
+    ios_deployment_target: str,
+    macos_deployment_target: str,
+) -> str:
     remote_url = (
         f"https://github.com/{release_repository}/releases/download/"
         f"MoltenVK-v{version}/MoltenVK.xcframework.zip"
@@ -72,8 +86,8 @@ let moltenVKTarget: Target = {{
 let package = Package(
     name: "MoltenVK",
     platforms: [
-        .iOS(.v14),
-        .macOS(.v11),
+        .iOS(.v{ios_deployment_target}),
+        .macOS(.v{macos_deployment_target}),
     ],
     products: [
         .library(
@@ -111,6 +125,8 @@ def main() -> int:
     parser.add_argument("--version", required=True, help="Package version used in the release tag.")
     parser.add_argument("--release-repository", required=True, help="GitHub owner/repository that hosts release assets.")
     parser.add_argument("--checksum", required=True, help="SwiftPM checksum for the MoltenVK.xcframework zip.")
+    parser.add_argument("--ios-deployment-target", required=True, help="SwiftPM iOS deployment target major version.")
+    parser.add_argument("--macos-deployment-target", required=True, help="SwiftPM macOS deployment target major version.")
     parser.add_argument("--output", default="Package.swift", help="Manifest output path.")
     args = parser.parse_args()
 
@@ -119,6 +135,8 @@ def main() -> int:
             validate_version(args.version),
             validate_release_repository(args.release_repository),
             validate_checksum(args.checksum),
+            validate_deployment_target(args.ios_deployment_target, "iOS"),
+            validate_deployment_target(args.macos_deployment_target, "macOS"),
         )
     except ValueError as error:
         parser.error(str(error))

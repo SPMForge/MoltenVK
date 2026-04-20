@@ -5,12 +5,28 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      target_version:
+        description: Stable package version to publish, for example 1.2.3
+        required: true
+        type: string
+      release_intent:
+        description: Stable releases require explicit operator intent
+        required: true
+        type: choice
+        options:
+          - stable
+      confirm_stable:
+        description: Confirm that this run should create a stable public release from main
+        required: true
+        type: boolean
 
 permissions:
   contents: write
 
 jobs:
   semantic-release:
+    if: github.event_name == 'push'
     runs-on: macos-15
     defaults:
       run:
@@ -71,3 +87,134 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SKIP_DEPENDENCY_FETCH: "1"
         run: npx --prefix SwiftPackage semantic-release --extends ./SwiftPackage/release.config.cjs
+
+  stable-release:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    env:
+      TARGET_VERSION: ${{ inputs.target_version }}
+      RELEASE_INTENT: ${{ inputs.release_intent }}
+      CONFIRM_STABLE: ${{ inputs.confirm_stable }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: SwiftPackage/package-lock.json
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
+      - name: Validate stable release request
+        run: |
+          [[ "$RELEASE_INTENT" == "stable" ]] || {
+            echo "error: release_intent must be stable for manual stable publishing." >&2
+            exit 1
+          }
+          [[ "$CONFIRM_STABLE" == "true" ]] || {
+            echo "error: confirm_stable must be true for manual stable publishing." >&2
+            exit 1
+          }
+          [[ "$TARGET_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "error: target_version must be a stable semver such as 1.2.3." >&2
+            exit 1
+          }
+
+      - name: Verify stable tag and release do not already exist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --force --tags origin
+          if git rev-parse -q --verify "refs/tags/MoltenVK-v${TARGET_VERSION}" >/dev/null; then
+            echo "error: stable tag already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+          if gh release view "MoltenVK-v${TARGET_VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "error: stable release already exists: MoltenVK-v${TARGET_VERSION}" >&2
+            exit 1
+          fi
+
+      - name: Prep cache key
+        id: prep
+        run: |
+          xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
+          echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Cache MoltenVK external dependencies
+        id: cache-dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            External/build
+            !External/build/Intermediates
+          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ hashFiles('fetchDependencies', 'ExternalRevisions/**', 'ExternalDependencies.xcodeproj/**', 'Scripts/**') }}
+
+      - name: Install release dependencies
+        run: npm ci --prefix SwiftPackage
+
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+
+      - name: Prewarm MoltenVK dependencies
+        if: steps.cache-dependencies.outputs.cache-hit != 'true'
+        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+
+      - name: Prepare manual stable release
+        env:
+          SKIP_DEPENDENCY_FETCH: "1"
+        run: ./Scripts/SwiftPackage/prepare_manual_release.sh "$TARGET_VERSION"
+
+      - name: Commit generated stable metadata
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Package.swift SwiftPackage/ReleaseRepository.txt SwiftPackage/PackageVersion.txt \
+            Artifacts/MoltenVK.xcframework.checksum Artifacts/MoltenVK-static.xcframework.checksum Artifacts/MoltenVKHeaders.checksum
+          if git diff --cached --quiet; then
+            echo "No generated metadata changes to commit."
+          else
+            git commit -m "chore(release): MoltenVK-v${TARGET_VERSION} [skip ci]"
+            git push origin HEAD:main
+          fi
+
+      - name: Create stable tag
+        run: |
+          git fetch origin main
+          git checkout origin/main
+          git tag -a "MoltenVK-v${TARGET_VERSION}" -m "MoltenVK-v${TARGET_VERSION}"
+          git push origin "MoltenVK-v${TARGET_VERSION}"
+
+      - name: Publish stable GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "MoltenVK-v${TARGET_VERSION}" \
+            Artifacts/MoltenVK.xcframework.zip \
+            Artifacts/MoltenVK.xcframework.checksum \
+            Artifacts/MoltenVK-static.xcframework.zip \
+            Artifacts/MoltenVK-static.xcframework.checksum \
+            Artifacts/MoltenVKHeaders.zip \
+            Artifacts/MoltenVKHeaders.checksum \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "MoltenVK-v${TARGET_VERSION}" \
+            --notes "Manual stable Swift Package release for MoltenVK ${TARGET_VERSION}."

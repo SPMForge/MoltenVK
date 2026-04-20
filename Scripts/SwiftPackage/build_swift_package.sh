@@ -145,6 +145,8 @@ python3 "$ROOT_DIR/Scripts/SwiftPackage/render_package_manifest.py" \
     --version "$(read_package_version)" \
     --release-repository "$(read_release_repository)" \
     --checksum "$(tr -d '[:space:]' <"$DYNAMIC_CHECKSUM_FILE")" \
+    --ios-deployment-target "$MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET" \
+    --macos-deployment-target "$MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET" \
     --output "$ROOT_DIR/Package.swift"
 
 swift package dump-package >/dev/null
