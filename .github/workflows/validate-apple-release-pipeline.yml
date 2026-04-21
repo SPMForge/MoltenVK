@@ -85,28 +85,33 @@ jobs:
             | shasum -a 256 \
             | awk '{print $1}'
           )"
-          cache_inputs_hash="$(
+          dependency_cache_inputs_hash="$(
             git ls-files --stage -- \
-              'Scripts/SwiftPackage' \
-              'SwiftPackage' \
+              'Scripts/SwiftPackage/build_swift_package_dependencies.sh' \
+              'Scripts/SwiftPackage/common.sh' \
+              'Scripts/SwiftPackage/source_acquisition.sh' \
+            | shasum -a 256 \
+            | awk '{print $1}'
+          )"
+          compiler_cache_inputs_hash="$(
+            git ls-files --stage -- \
+              'Scripts/SwiftPackage/build_swift_package.sh' \
+              'Scripts/SwiftPackage/common.sh' \
+              'Scripts/SwiftPackage/source_acquisition.sh' \
               'Sources' \
-              'tests' \
-              '.github/workflows/validate-apple-release-pipeline.yml' \
-              '.github/workflows/publish-package-release-core.yml' \
-              '.github/workflows/publish-latest-upstream-alpha.yml' \
-              '.github/workflows/publish-upstream-release-manually.yml' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
           echo "xcode_version=${xcode_version}" >> "$GITHUB_OUTPUT"
           echo "upstream_inputs_hash=${upstream_inputs_hash}" >> "$GITHUB_OUTPUT"
-          echo "cache_inputs_hash=${cache_inputs_hash}" >> "$GITHUB_OUTPUT"
+          echo "dependency_cache_inputs_hash=${dependency_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
+          echo "compiler_cache_inputs_hash=${compiler_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Cache compiler results
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-v1
+          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
           restore-keys: |
             ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-
             ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-
@@ -124,7 +129,7 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: ${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.cache_inputs_hash }}
+          key: dependencies-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.dependency_cache_inputs_hash }}-v2
 
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
