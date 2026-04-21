@@ -52,9 +52,56 @@ def discover_xcframeworks(raw_paths: list[str]) -> list[Path]:
     return results
 
 
+def macos_framework_layout_issues(framework_path: Path, binary_path: Path) -> list[str]:
+    framework_name = framework_path.stem
+    versions_dir = framework_path / "Versions"
+    current_version = versions_dir / "Current"
+    version_a_dir = versions_dir / "A"
+    versioned_binary = version_a_dir / framework_name
+    top_level_binary = framework_path / framework_name
+    versioned_resources = version_a_dir / "Resources"
+    top_level_resources = framework_path / "Resources"
+    versioned_info = versioned_resources / "Info.plist"
+
+    issues: list[str] = []
+
+    if not versions_dir.is_dir():
+        issues.append(f"macos: missing versioned framework directory {versions_dir}")
+    if not version_a_dir.is_dir():
+        issues.append(f"macos: missing versioned framework directory {version_a_dir}")
+    if not current_version.is_symlink():
+        issues.append(f"macos: missing version symlink {current_version}")
+    elif current_version.resolve() != version_a_dir.resolve():
+        issues.append(f"macos: {current_version} does not resolve to {version_a_dir}")
+
+    if not versioned_binary.exists():
+        issues.append(f"macos: missing versioned framework binary {versioned_binary}")
+    if binary_path.resolve() != versioned_binary.resolve():
+        issues.append(f"macos: binary path {binary_path} does not resolve to {versioned_binary}")
+    if not top_level_binary.is_symlink():
+        issues.append(f"macos: top-level framework binary is not a symlink ({top_level_binary})")
+    elif top_level_binary.resolve() != versioned_binary.resolve():
+        issues.append(f"macos: top-level framework binary does not resolve to {versioned_binary}")
+
+    if not versioned_info.is_file():
+        issues.append(f"macos: missing versioned framework Info.plist {versioned_info}")
+    if not top_level_resources.is_symlink():
+        issues.append(f"macos: top-level Resources is not a symlink ({top_level_resources})")
+    elif top_level_resources.resolve() != versioned_resources.resolve():
+        issues.append(f"macos: top-level Resources does not resolve to {versioned_resources}")
+
+    return issues
+
+
 def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str, object]:
     library_identifier = entry.get("LibraryIdentifier")
+    library_name = entry.get("LibraryPath")
     binary_name = entry.get("BinaryPath") or entry.get("LibraryPath")
+    library_path = (
+        xcframework_path / str(library_identifier) / str(library_name)
+        if isinstance(library_identifier, str) and isinstance(library_name, str)
+        else None
+    )
     binary_path = (
         xcframework_path / str(library_identifier) / str(binary_name)
         if isinstance(library_identifier, str) and isinstance(binary_name, str)
@@ -68,6 +115,8 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
         "platform": platform,
         "architectures": entry.get("SupportedArchitectures") or [],
         "mergeable_metadata": entry.get("MergeableMetadata") is True,
+        "library_path": str(library_path) if library_path is not None else None,
+        "library_exists": bool(library_path and library_path.exists()),
         "binary_path": str(binary_path) if binary_path is not None else None,
         "binary_exists": bool(binary_path and binary_path.exists()),
         "expected_vtool_platform": expected_vtool_platform,
@@ -75,6 +124,9 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
 
     if binary_path is None or not binary_path.exists():
         return result
+
+    if platform == "macos" and library_path is not None and library_path.suffix == ".framework" and library_path.exists():
+        result["macos_framework_layout_issues"] = macos_framework_layout_issues(library_path, binary_path)
 
     if not shutil.which("xcrun"):
         result["vtool_error"] = "xcrun is unavailable"
@@ -118,6 +170,10 @@ def entry_issues(entry: dict[str, object]) -> list[str]:
         issues.append(
             f"{platform}: expected vtool platform {expected_vtool_platform}, got {', '.join(str(value) for value in vtool_platforms)}"
         )
+
+    macos_framework_layout_issues = entry.get("macos_framework_layout_issues")
+    if isinstance(macos_framework_layout_issues, list):
+        issues.extend(str(issue) for issue in macos_framework_layout_issues)
 
     return issues
 

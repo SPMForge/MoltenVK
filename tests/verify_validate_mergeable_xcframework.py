@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -22,6 +23,28 @@ validator = load_validator_module()
 
 
 class ValidateMergeableXCFrameworkTests(unittest.TestCase):
+    def make_versioned_framework(self, root: Path, flattened: bool = False) -> tuple[Path, Path]:
+        framework_path = root / "MoltenVK.framework"
+        framework_path.mkdir()
+
+        if flattened:
+            binary_path = framework_path / "MoltenVK"
+            binary_path.write_bytes(b"binary")
+            resources_dir = framework_path / "Resources"
+            resources_dir.mkdir()
+            (resources_dir / "Info.plist").write_text("plist", encoding="utf-8")
+            return framework_path, binary_path
+
+        versioned_resources = framework_path / "Versions" / "A" / "Resources"
+        versioned_resources.mkdir(parents=True)
+        binary_path = framework_path / "Versions" / "A" / "MoltenVK"
+        binary_path.write_bytes(b"binary")
+        (versioned_resources / "Info.plist").write_text("plist", encoding="utf-8")
+        (framework_path / "Versions" / "Current").symlink_to("A")
+        (framework_path / "MoltenVK").symlink_to("Versions/Current/MoltenVK")
+        (framework_path / "Resources").symlink_to("Versions/Current/Resources", target_is_directory=True)
+        return framework_path, binary_path
+
     def test_platform_key_includes_variant(self) -> None:
         self.assertEqual(
             validator.platform_key(
@@ -75,6 +98,20 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
             }
         )
         self.assertEqual(issues, ["ios: missing vtool platform output"])
+
+    def test_macos_framework_layout_accepts_versioned_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path, binary_path = self.make_versioned_framework(Path(tmp_dir))
+            issues = validator.macos_framework_layout_issues(framework_path, binary_path)
+        self.assertEqual(issues, [])
+
+    def test_macos_framework_layout_rejects_flat_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path, binary_path = self.make_versioned_framework(Path(tmp_dir), flattened=True)
+            issues = validator.macos_framework_layout_issues(framework_path, binary_path)
+        self.assertIn("macos: missing versioned framework directory", issues[0])
+        self.assertTrue(any("top-level framework binary is not a symlink" in issue for issue in issues))
+        self.assertTrue(any("top-level Resources is not a symlink" in issue for issue in issues))
 
 
 if __name__ == "__main__":
