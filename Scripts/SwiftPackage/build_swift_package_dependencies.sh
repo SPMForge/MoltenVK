@@ -14,7 +14,10 @@ require_command cmake
 setup_ccache
 
 cleanup_ccache() {
-    [[ -n "${CCACHE_WRAPPER_DIR:-}" ]] && rm -rf "$CCACHE_WRAPPER_DIR"
+    if [[ -n "${CCACHE_WRAPPER_DIR:-}" ]]; then
+        rm -rf "$CCACHE_WRAPPER_DIR"
+    fi
+    return 0
 }
 
 trap cleanup_ccache EXIT
@@ -36,7 +39,7 @@ if [[ "${MVK_SOURCE_WORKSPACE_ACTIVE:-0}" != "1" ]]; then
         ./Scripts/SwiftPackage/build_swift_package_dependencies.sh "$@"
     )
 
-    sync_workspace_outputs_back "$workspace_root" "$ROOT_DIR"
+    sync_dependency_cache_back "$workspace_root" "$ROOT_DIR"
     log "Prewarmed MoltenVK dependencies from upstream snapshot $resolved_upstream_ref"
     exit 0
 fi

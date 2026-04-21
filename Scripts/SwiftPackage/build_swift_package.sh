@@ -16,6 +16,37 @@ STATIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME.checksum"
 DYNAMIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.checksum"
 HEADERS_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_HEADERS_CHECKSUM_NAME"
 
+archive_basename_for_platform() {
+    case "$1" in
+        macos)
+            printf 'macos\n'
+            ;;
+        ios)
+            printf 'ios\n'
+            ;;
+        ios-simulator)
+            printf 'ios-simulator\n'
+            ;;
+        *)
+            fail "Unsupported platform id in build_swift_package.sh archive mapping: $1"
+            ;;
+    esac
+}
+
+packaging_scheme_for_platform() {
+    case "$1" in
+        macos)
+            printf 'MoltenVK Package (macOS only)\n'
+            ;;
+        ios|ios-simulator)
+            printf 'MoltenVK Package (iOS only)\n'
+            ;;
+        *)
+            fail "Unsupported platform id in build_swift_package.sh packaging scheme mapping: $1"
+            ;;
+    esac
+}
+
 if [[ "${MVK_SOURCE_MODE:-upstream-snapshot}" == "upstream-snapshot" && "${MVK_SOURCE_WORKSPACE_ACTIVE:-0}" != "1" ]]; then
     workspace_info="$(prepare_upstream_wrapper_workspace "${MVK_UPSTREAM_REF:-}")"
     workspace_root="$(printf '%s\n' "$workspace_info" | sed -n '1p')"
@@ -43,21 +74,21 @@ fi
 run_packaging_build() {
     local scheme="$1"
     local destination="$2"
+    local command=(
+        xcodebuild build
+        -project "$MOLTENVK_PACKAGING_PROJECT"
+        -scheme "$scheme"
+        -configuration "$CONFIGURATION"
+        -destination "$destination"
+    )
 
-    xcodebuild build \
-        -project "$MOLTENVK_PACKAGING_PROJECT" \
-        -scheme "$scheme" \
-        -configuration "$CONFIGURATION" \
-        -destination "$destination" \
-        "${CCACHE_BUILD_ARGS[@]}" \
-        GCC_PREPROCESSOR_DEFINITIONS='$inherited MVK_USE_METAL_PRIVATE_API=0'
-}
+    if (( ${#CCACHE_BUILD_ARGS[@]} )); then
+        command+=("${CCACHE_BUILD_ARGS[@]}")
+    fi
 
-scheme_exists() {
-    local project_path="$1"
-    local scheme="$2"
+    command+=('GCC_PREPROCESSOR_DEFINITIONS=$inherited MVK_USE_METAL_PRIVATE_API=0')
 
-    xcodebuild -list -project "$project_path" 2>/dev/null | grep -Fq "        $scheme"
+    "${command[@]}"
 }
 
 require_command xcodebuild
@@ -78,7 +109,10 @@ parse_requested_platforms "$@"
 setup_ccache
 
 cleanup_ccache() {
-    [[ -n "${CCACHE_WRAPPER_DIR:-}" ]] && rm -rf "$CCACHE_WRAPPER_DIR"
+    if [[ -n "${CCACHE_WRAPPER_DIR:-}" ]]; then
+        rm -rf "$CCACHE_WRAPPER_DIR"
+    fi
+    return 0
 }
 
 if [[ "${SKIP_DEPENDENCY_FETCH:-0}" == "1" ]]; then
@@ -91,9 +125,14 @@ fi
 local_workspace=""
 archives_dir=""
 cleanup() {
-    [[ -n "$local_workspace" ]] && rm -rf "$local_workspace"
-    [[ -n "$archives_dir" ]] && rm -rf "$archives_dir"
+    if [[ -n "$local_workspace" ]]; then
+        rm -rf "$local_workspace"
+    fi
+    if [[ -n "$archives_dir" ]]; then
+        rm -rf "$archives_dir"
+    fi
     cleanup_ccache
+    return 0
 }
 trap cleanup EXIT
 
@@ -101,41 +140,13 @@ local_workspace="$(prepare_patched_swift_package_workspace)"
 archives_dir="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-swift-package-archives.XXXXXX")"
 
 log "Archiving mergeable MoltenVK runtime slices"
-if (( BUILD_MACOS )); then
-    macos_dynamic_scheme="MoltenVK-macOS-dynamic"
-    if ! scheme_exists "$local_workspace/MoltenVK/MoltenVK.xcodeproj" "$macos_dynamic_scheme"; then
-        macos_dynamic_scheme="MoltenVK-macOS"
-    fi
+for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
     archive_dynamic_framework \
         "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
-        "$macos_dynamic_scheme" \
-        "generic/platform=macOS" \
-        "$archives_dir/macos.xcarchive"
-fi
-
-if (( BUILD_IOS )); then
-    ios_dynamic_scheme="MoltenVK-iOS-dynamic"
-    if ! scheme_exists "$local_workspace/MoltenVK/MoltenVK.xcodeproj" "$ios_dynamic_scheme"; then
-        ios_dynamic_scheme="MoltenVK-iOS"
-    fi
-    archive_dynamic_framework \
-        "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
-        "$ios_dynamic_scheme" \
-        "generic/platform=iOS" \
-        "$archives_dir/ios.xcarchive"
-fi
-
-if (( BUILD_IOS_SIM )); then
-    ios_sim_dynamic_scheme="MoltenVK-iOS-dynamic"
-    if ! scheme_exists "$local_workspace/MoltenVK/MoltenVK.xcodeproj" "$ios_sim_dynamic_scheme"; then
-        ios_sim_dynamic_scheme="MoltenVK-iOS"
-    fi
-    archive_dynamic_framework \
-        "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
-        "$ios_sim_dynamic_scheme" \
-        "generic/platform=iOS Simulator" \
-        "$archives_dir/ios-simulator.xcarchive"
-fi
+        "$(dynamic_scheme_for_platform "$platform_id" "$local_workspace/MoltenVK/MoltenVK.xcodeproj")" \
+        "$(platform_destination_for_id "$platform_id")" \
+        "$archives_dir/$(archive_basename_for_platform "$platform_id").xcarchive"
+done
 
 mkdir -p "$ARTIFACTS_DIR"
 rm -rf "$DYNAMIC_DEST" "$STATIC_DEST"
@@ -147,20 +158,11 @@ while IFS= read -r validator_arg; do
     [[ -n "$validator_arg" ]] && validator_args+=("$validator_arg")
 done < <(dynamic_validator_args)
 
-if (( BUILD_MACOS )); then
-    require_path "$archives_dir/macos.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
-    xcframework_args+=(-framework "$archives_dir/macos.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
-fi
-
-if (( BUILD_IOS )); then
-    require_path "$archives_dir/ios.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
-    xcframework_args+=(-framework "$archives_dir/ios.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
-fi
-
-if (( BUILD_IOS_SIM )); then
-    require_path "$archives_dir/ios-simulator.xcarchive/Products/Library/Frameworks/MoltenVK.framework"
-    xcframework_args+=(-framework "$archives_dir/ios-simulator.xcarchive/Products/Library/Frameworks/MoltenVK.framework")
-fi
+for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
+    framework_path="$archives_dir/$(archive_basename_for_platform "$platform_id").xcarchive/Products/Library/Frameworks/MoltenVK.framework"
+    require_path "$framework_path"
+    xcframework_args+=(-framework "$framework_path")
+done
 
 xcodebuild -create-xcframework "${xcframework_args[@]}" -output "$DYNAMIC_DEST"
 python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" \
@@ -168,17 +170,11 @@ python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" \
     "${validator_args[@]}"
 
 log "Building legacy static MoltenVK XCFramework slices"
-if (( BUILD_MACOS )); then
-    run_packaging_build "MoltenVK Package (macOS only)" "generic/platform=macOS"
-fi
-
-if (( BUILD_IOS )); then
-    run_packaging_build "MoltenVK Package (iOS only)" "generic/platform=iOS"
-fi
-
-if (( BUILD_IOS_SIM )); then
-    run_packaging_build "MoltenVK Package (iOS only)" "generic/platform=iOS Simulator"
-fi
+for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
+    run_packaging_build \
+        "$(packaging_scheme_for_platform "$platform_id")" \
+        "$(platform_destination_for_id "$platform_id")"
+done
 
 require_path "$STATIC_SOURCE"
 cp -R "$STATIC_SOURCE" "$STATIC_DEST"
@@ -196,8 +192,7 @@ python3 "$ROOT_DIR/Scripts/SwiftPackage/render_package_manifest.py" \
     --version "$(read_package_version)" \
     --release-repository "$(read_release_repository)" \
     --checksum "$(tr -d '[:space:]' <"$DYNAMIC_CHECKSUM_FILE")" \
-    --ios-deployment-target "$MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET" \
-    --macos-deployment-target "$MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET" \
+    --platform-config "$MOLTENVK_PLATFORM_CONFIG_FILE" \
     --output "$ROOT_DIR/Package.swift"
 
 swift package dump-package >/dev/null

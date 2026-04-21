@@ -177,6 +177,19 @@ prepare_upstream_wrapper_workspace() {
     printf '%s\n%s\n' "$workspace_root" "$resolved_ref"
 }
 
+sync_dependency_cache_back() {
+    local workspace_root="$1"
+    local wrapper_root="${2:-$ROOT_DIR}"
+    local relative_path
+
+    for relative_path in "${MOLTENVK_EXTERNAL_CACHE_PATHS[@]}"; do
+        if [[ -e "$workspace_root/$relative_path" ]]; then
+            mkdir -p "$wrapper_root/$(dirname "$relative_path")"
+            rsync -a --delete "$workspace_root/$relative_path" "$wrapper_root/$(dirname "$relative_path")/"
+        fi
+    done
+}
+
 sync_workspace_outputs_back() {
     local workspace_root="$1"
     local wrapper_root="${2:-$ROOT_DIR}"
@@ -196,10 +209,5 @@ sync_workspace_outputs_back() {
         fi
     done
 
-    for relative_path in "${MOLTENVK_EXTERNAL_CACHE_PATHS[@]}"; do
-        if [[ -e "$workspace_root/$relative_path" ]]; then
-            mkdir -p "$wrapper_root/$(dirname "$relative_path")"
-            rsync -a --delete "$workspace_root/$relative_path" "$wrapper_root/$(dirname "$relative_path")/"
-        fi
-    done
+    sync_dependency_cache_back "$workspace_root" "$wrapper_root"
 }

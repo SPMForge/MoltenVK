@@ -8,7 +8,16 @@ import plistlib
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from platform_config import expected_vtool_platforms, load_platform_config
+
+EXPECTED_VTOOL_PLATFORMS = expected_vtool_platforms(load_platform_config())
 
 
 def command_output(arguments: list[str]) -> str:
@@ -52,22 +61,65 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
         else None
     )
 
+    platform = platform_key(entry)
+    expected_vtool_platform = EXPECTED_VTOOL_PLATFORMS.get(platform)
+
     result = {
-        "platform": platform_key(entry),
+        "platform": platform,
         "architectures": entry.get("SupportedArchitectures") or [],
         "mergeable_metadata": entry.get("MergeableMetadata") is True,
         "binary_path": str(binary_path) if binary_path is not None else None,
         "binary_exists": bool(binary_path and binary_path.exists()),
+        "expected_vtool_platform": expected_vtool_platform,
     }
 
-    if binary_path is not None and binary_path.exists() and shutil.which("xcrun"):
-        try:
-            output = command_output(["xcrun", "vtool", "-show-build", str(binary_path)])
-            result["vtool_platforms"] = sorted(set(re.findall(r"platform\s+([A-Z0-9_]+)", output)))
-        except subprocess.CalledProcessError as error:
-            result["vtool_error"] = error.output.strip() if error.output else str(error)
+    if binary_path is None or not binary_path.exists():
+        return result
+
+    if not shutil.which("xcrun"):
+        result["vtool_error"] = "xcrun is unavailable"
+        return result
+
+    try:
+        output = command_output(["xcrun", "vtool", "-show-build", str(binary_path)])
+        result["vtool_platforms"] = sorted(set(re.findall(r"platform\s+([A-Z0-9_]+)", output)))
+    except subprocess.CalledProcessError as error:
+        result["vtool_error"] = error.output.strip() if error.output else str(error)
 
     return result
+
+
+def entry_issues(entry: dict[str, object]) -> list[str]:
+    issues: list[str] = []
+
+    platform = str(entry.get("platform", "unknown"))
+    if not entry.get("mergeable_metadata"):
+        issues.append(f"{platform}: missing MergeableMetadata")
+    if not entry.get("binary_exists"):
+        issues.append(f"{platform}: missing binary at declared path")
+        return issues
+
+    expected_vtool_platform = entry.get("expected_vtool_platform")
+    if not isinstance(expected_vtool_platform, str):
+        issues.append(f"{platform}: unsupported vtool platform mapping")
+        return issues
+
+    vtool_error = entry.get("vtool_error")
+    if isinstance(vtool_error, str) and vtool_error:
+        issues.append(f"{platform}: unable to read vtool platform ({vtool_error})")
+        return issues
+
+    vtool_platforms = entry.get("vtool_platforms")
+    if not isinstance(vtool_platforms, list) or not vtool_platforms:
+        issues.append(f"{platform}: missing vtool platform output")
+        return issues
+
+    if expected_vtool_platform not in vtool_platforms:
+        issues.append(
+            f"{platform}: expected vtool platform {expected_vtool_platform}, got {', '.join(str(value) for value in vtool_platforms)}"
+        )
+
+    return issues
 
 
 def inspect_xcframework(xcframework_path: Path) -> dict[str, object]:
@@ -91,10 +143,7 @@ def inspect_xcframework(xcframework_path: Path) -> dict[str, object]:
     entries = [inspect_entry(xcframework_path, entry) for entry in available if isinstance(entry, dict)]
     issues: list[str] = []
     for entry in entries:
-        if not entry["mergeable_metadata"]:
-            issues.append(f"{entry['platform']}: missing MergeableMetadata")
-        if not entry["binary_exists"]:
-            issues.append(f"{entry['platform']}: missing binary at declared path")
+        issues.extend(entry_issues(entry))
 
     return {
         "xcframework": str(xcframework_path),

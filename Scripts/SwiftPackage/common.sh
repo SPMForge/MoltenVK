@@ -6,11 +6,11 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ARTIFACTS_DIR="$ROOT_DIR/Artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
 SWIFT_PACKAGE_DIR="$ROOT_DIR/SwiftPackage"
+MOLTENVK_PLATFORM_CONFIG_FILE="$SWIFT_PACKAGE_DIR/platforms.json"
+MOLTENVK_PLATFORM_CONFIG_SCRIPT="$ROOT_DIR/Scripts/SwiftPackage/platform_config.py"
 MOLTENVK_PROJECT="$ROOT_DIR/MoltenVK/MoltenVK.xcodeproj"
 MOLTENVK_PACKAGING_PROJECT="$ROOT_DIR/MoltenVKPackaging.xcodeproj"
 MOLTENVK_INCLUDE_DIR="$ROOT_DIR/MoltenVK/include"
-MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET="14"
-MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET="11"
 MOLTENVK_DYNAMIC_ARTIFACT_NAME="MoltenVK.xcframework"
 MOLTENVK_STATIC_ARTIFACT_NAME="MoltenVK-static.xcframework"
 MOLTENVK_HEADERS_ARCHIVE_NAME="MoltenVKHeaders.zip"
@@ -27,9 +27,7 @@ MOLTENVK_REQUIRED_EXTERNAL_SOURCE_PATHS=(
     "$ROOT_DIR/External/Volk/volk.h"
 )
 
-BUILD_MACOS=0
-BUILD_IOS=0
-BUILD_IOS_SIM=0
+REQUESTED_PLATFORM_IDS=()
 REQUESTED_PLATFORM_FLAGS=()
 CCACHE_BUILD_ARGS=()
 CCACHE_WRAPPER_DIR=""
@@ -48,11 +46,89 @@ fail() {
     exit 1
 }
 
+load_platform_model() {
+    local shell_assignments
+    shell_assignments="$(
+        python3 "$MOLTENVK_PLATFORM_CONFIG_SCRIPT" render-shell --config "$MOLTENVK_PLATFORM_CONFIG_FILE"
+    )" || fail "Unable to load platform config from $MOLTENVK_PLATFORM_CONFIG_FILE"
+    eval "$shell_assignments"
+}
+
+platform_index_by_id() {
+    local requested_id="$1"
+    local index
+    for index in "${!MOLTENVK_PLATFORM_IDS[@]}"; do
+        if [[ "${MOLTENVK_PLATFORM_IDS[$index]}" == "$requested_id" ]]; then
+            printf '%s\n' "$index"
+            return 0
+        fi
+    done
+    return 1
+}
+
+platform_destination_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    printf '%s\n' "${MOLTENVK_PLATFORM_DESTINATIONS[$index]}"
+}
+
+platform_sdk_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    printf '%s\n' "${MOLTENVK_PLATFORM_SDKS[$index]}"
+}
+
+platform_validator_key_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    printf '%s\n' "${MOLTENVK_PLATFORM_VALIDATOR_KEYS[$index]}"
+}
+
+platform_build_flag_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    printf '%s\n' "${MOLTENVK_PLATFORM_BUILD_FLAGS[$index]}"
+}
+
+platform_family_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    printf '%s\n' "${MOLTENVK_PLATFORM_FAMILIES[$index]}"
+}
+
+platform_consumer_test_enabled_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    [[ "${MOLTENVK_PLATFORM_CONSUMER_TESTS[$index]}" == "1" ]]
+}
+
+consumer_test_platform_ids() {
+    local index
+    for index in "${!MOLTENVK_PLATFORM_IDS[@]}"; do
+        if [[ "${MOLTENVK_PLATFORM_CONSUMER_TESTS[$index]}" == "1" ]]; then
+            printf '%s\n' "${MOLTENVK_PLATFORM_IDS[$index]}"
+        fi
+    done
+}
+
+configured_validator_args() {
+    local args=()
+    local platform_id
+    for platform_id in "${MOLTENVK_PLATFORM_IDS[@]}"; do
+        args+=(--require-platform "$(platform_validator_key_for_id "$platform_id")")
+    done
+    printf '%s\n' "${args[@]}"
+}
+
+load_platform_model
+
 setup_ccache() {
     CCACHE_BUILD_ARGS=()
     CCACHE_ENABLED=0
 
-    [[ "${MVK_ENABLE_CCACHE:-0}" == "1" ]] || return
+    if [[ "${MVK_ENABLE_CCACHE:-0}" != "1" ]]; then
+        return 0
+    fi
 
     if ! command -v ccache >/dev/null 2>&1; then
         warn "MVK_ENABLE_CCACHE=1 but ccache is unavailable; continuing without compiler cache."
@@ -125,69 +201,58 @@ sdk_supports_platform() {
 }
 
 parse_requested_platforms() {
-    BUILD_MACOS=0
-    BUILD_IOS=0
-    BUILD_IOS_SIM=0
+    REQUESTED_PLATFORM_IDS=()
     REQUESTED_PLATFORM_FLAGS=()
 
     if [[ $# -eq 0 ]]; then
-        BUILD_MACOS=1
-        REQUESTED_PLATFORM_FLAGS+=(--macos)
-
-        if sdk_supports_platform iphoneos; then
-            BUILD_IOS=1
-            REQUESTED_PLATFORM_FLAGS+=(--ios)
-        else
-            warn "Skipping iOS device slice because the iPhoneOS SDK is not installed in this Xcode installation."
-        fi
-
-        if sdk_supports_platform iphonesimulator; then
-            BUILD_IOS_SIM=1
-            REQUESTED_PLATFORM_FLAGS+=(--iossim)
-        else
-            warn "Skipping iOS simulator slice because the iPhoneSimulator SDK is not installed in this Xcode installation."
-        fi
-
+        local platform_id
+        local sdk
+        local build_flag
+        for platform_id in "${MOLTENVK_PLATFORM_IDS[@]}"; do
+            sdk="$(platform_sdk_for_id "$platform_id")"
+            build_flag="$(platform_build_flag_for_id "$platform_id")"
+            if sdk_supports_platform "$sdk"; then
+                REQUESTED_PLATFORM_IDS+=("$platform_id")
+                REQUESTED_PLATFORM_FLAGS+=("$build_flag")
+            else
+                warn "Skipping ${platform_id} because the ${sdk} SDK is not installed in this Xcode installation."
+            fi
+        done
         return
     fi
 
     local platform
+    local platform_id
+    local build_flag
+    local matched_platform_id
     for platform in "$@"; do
         case "$platform" in
             --all)
-                BUILD_MACOS=1
-                BUILD_IOS=1
-                BUILD_IOS_SIM=1
-                ;;
-            --macos)
-                BUILD_MACOS=1
-                ;;
-            --ios)
-                BUILD_IOS=1
-                ;;
-            --iossim)
-                BUILD_IOS_SIM=1
+                parse_requested_platforms
+                return
                 ;;
             *)
-                fail "Unsupported platform flag: $platform"
+                matched_platform_id=""
+                for platform_id in "${MOLTENVK_PLATFORM_IDS[@]}"; do
+                    build_flag="$(platform_build_flag_for_id "$platform_id")"
+                    if [[ "$build_flag" == "$platform" ]]; then
+                        matched_platform_id="$platform_id"
+                        break
+                    fi
+                done
+
+                [[ -n "$matched_platform_id" ]] || fail "Unsupported platform flag: $platform"
+                if ! sdk_supports_platform "$(platform_sdk_for_id "$matched_platform_id")"; then
+                    fail "Requested ${platform}, but the $(platform_sdk_for_id "$matched_platform_id") SDK is not installed."
+                fi
+
+                REQUESTED_PLATFORM_IDS+=("$matched_platform_id")
+                REQUESTED_PLATFORM_FLAGS+=("$platform")
                 ;;
         esac
     done
 
-    (( BUILD_MACOS || BUILD_IOS || BUILD_IOS_SIM )) || fail "No supported Apple platform was requested. Use --macos, --ios, --iossim, or --all."
-
-    REQUESTED_PLATFORM_FLAGS=()
-    (( BUILD_MACOS )) && REQUESTED_PLATFORM_FLAGS+=(--macos)
-    (( BUILD_IOS )) && REQUESTED_PLATFORM_FLAGS+=(--ios)
-    (( BUILD_IOS_SIM )) && REQUESTED_PLATFORM_FLAGS+=(--iossim)
-
-    if (( BUILD_IOS )) && ! sdk_supports_platform iphoneos; then
-        fail "Requested --ios, but the iPhoneOS SDK is not installed."
-    fi
-
-    if (( BUILD_IOS_SIM )) && ! sdk_supports_platform iphonesimulator; then
-        fail "Requested --iossim, but the iPhoneSimulator SDK is not installed."
-    fi
+    (( ${#REQUESTED_PLATFORM_IDS[@]} )) || fail "No supported Apple platform was requested."
 }
 
 read_package_version() {
@@ -218,12 +283,45 @@ read_release_repository() {
 
 dynamic_validator_args() {
     local args=()
-    (( BUILD_MACOS )) && args+=(--require-platform macos)
-    (( BUILD_IOS )) && args+=(--require-platform ios)
-    (( BUILD_IOS_SIM )) && args+=(--require-platform ios-simulator)
+    local platform_id
+    for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
+        args+=(--require-platform "$(platform_validator_key_for_id "$platform_id")")
+    done
     if (( ${#args[@]} )); then
         printf '%s\n' "${args[@]}"
     fi
+}
+
+scheme_exists() {
+    local project_path="$1"
+    local scheme="$2"
+
+    xcodebuild -list -project "$project_path" 2>/dev/null | grep -Fq "        $scheme"
+}
+
+dynamic_scheme_for_platform() {
+    local platform_id="$1"
+    local project_path="$2"
+    local scheme_base
+
+    case "$platform_id" in
+        macos)
+            scheme_base="MoltenVK-macOS"
+            ;;
+        ios|ios-simulator)
+            scheme_base="MoltenVK-iOS"
+            ;;
+        *)
+            fail "Unsupported platform id in dynamic scheme mapping: $platform_id"
+            ;;
+    esac
+
+    if scheme_exists "$project_path" "${scheme_base}-dynamic"; then
+        printf '%s-dynamic\n' "$scheme_base"
+        return
+    fi
+
+    printf '%s\n' "$scheme_base"
 }
 
 require_external_dependency_sources() {
@@ -309,19 +407,28 @@ archive_dynamic_framework() {
     local scheme="$2"
     local destination="$3"
     local archive_path="$4"
+    local command=(
+        xcodebuild archive
+        -project "$project_path"
+        -scheme "$scheme"
+        -configuration "$CONFIGURATION"
+        -destination "$destination"
+        -archivePath "$archive_path"
+    )
 
-    xcodebuild archive \
-        -project "$project_path" \
-        -scheme "$scheme" \
-        -configuration "$CONFIGURATION" \
-        -destination "$destination" \
-        -archivePath "$archive_path" \
-        "${CCACHE_BUILD_ARGS[@]}" \
-        SKIP_INSTALL=NO \
-        MERGEABLE_LIBRARY=YES \
-        BUILD_LIBRARY_FOR_DISTRIBUTION=YES \
-        CODE_SIGNING_ALLOWED=NO \
-        CODE_SIGNING_REQUIRED=NO \
-        ONLY_ACTIVE_ARCH=NO \
-        GCC_PREPROCESSOR_DEFINITIONS='$inherited MVK_USE_METAL_PRIVATE_API=0'
+    if (( ${#CCACHE_BUILD_ARGS[@]} )); then
+        command+=("${CCACHE_BUILD_ARGS[@]}")
+    fi
+
+    command+=(
+        SKIP_INSTALL=NO
+        MERGEABLE_LIBRARY=YES
+        BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+        CODE_SIGNING_ALLOWED=NO
+        CODE_SIGNING_REQUIRED=NO
+        ONLY_ACTIVE_ARCH=NO
+        'GCC_PREPROCESSOR_DEFINITIONS=$inherited MVK_USE_METAL_PRIVATE_API=0'
+    )
+
+    "${command[@]}"
 }

@@ -43,11 +43,11 @@ swift package compute-checksum "$HEADERS_ZIP" >"$TMP_DIR/moltenvk.headers.checks
 diff -u "$HEADERS_CHECKSUM" "$TMP_DIR/moltenvk.headers.checksum"
 
 plutil -p "$DYNAMIC_XCFRAMEWORK/Info.plist" >/dev/null
-python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" \
-    "$DYNAMIC_XCFRAMEWORK" \
-    --require-platform macos \
-    --require-platform ios \
-    --require-platform ios-simulator
+validator_args=()
+while IFS= read -r validator_arg; do
+    [[ -n "$validator_arg" ]] && validator_args+=("$validator_arg")
+done < <(configured_validator_args)
+python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" "$DYNAMIC_XCFRAMEWORK" "${validator_args[@]}"
 
 swift package dump-package >/dev/null
 

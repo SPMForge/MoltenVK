@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from platform_config import DEFAULT_PLATFORM_CONFIG_PATH, load_platform_config, manifest_platform_entries
 
 CHECKSUM_RE = re.compile(r"^[0-9a-f]{64}$")
 RELEASE_REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
@@ -46,12 +53,16 @@ def render_manifest(
     version: str,
     release_repository: str,
     checksum: str,
-    ios_deployment_target: str,
-    macos_deployment_target: str,
+    platform_entries: list[tuple[str, str]],
 ) -> str:
     remote_url = (
         f"https://github.com/{release_repository}/releases/download/"
         f"MoltenVK-v{version}/MoltenVK.xcframework.zip"
+    )
+
+    rendered_platforms = "\n".join(
+        f"        .{swiftpm_platform}(.v{deployment_target}),"
+        for swiftpm_platform, deployment_target in platform_entries
     )
 
     return f"""// swift-tools-version: 6.0
@@ -86,8 +97,7 @@ let moltenVKTarget: Target = {{
 let package = Package(
     name: "MoltenVK",
     platforms: [
-        .iOS(.v{ios_deployment_target}),
-        .macOS(.v{macos_deployment_target}),
+{rendered_platforms}
     ],
     products: [
         .library(
@@ -125,18 +135,42 @@ def main() -> int:
     parser.add_argument("--version", required=True, help="Package version used in the release tag.")
     parser.add_argument("--release-repository", required=True, help="GitHub owner/repository that hosts release assets.")
     parser.add_argument("--checksum", required=True, help="SwiftPM checksum for the MoltenVK.xcframework zip.")
-    parser.add_argument("--ios-deployment-target", required=True, help="SwiftPM iOS deployment target major version.")
-    parser.add_argument("--macos-deployment-target", required=True, help="SwiftPM macOS deployment target major version.")
+    parser.add_argument(
+        "--platform-config",
+        default=str(DEFAULT_PLATFORM_CONFIG_PATH),
+        help="Path to the centralized platform config JSON file.",
+    )
+    parser.add_argument("--ios-deployment-target", help="Legacy override for the SwiftPM iOS deployment target major version.")
+    parser.add_argument("--macos-deployment-target", help="Legacy override for the SwiftPM macOS deployment target major version.")
     parser.add_argument("--output", default="Package.swift", help="Manifest output path.")
     args = parser.parse_args()
 
     try:
+        platform_entries = [
+            (
+                swiftpm_platform,
+                validate_deployment_target(deployment_target, swiftpm_platform),
+            )
+            for swiftpm_platform, deployment_target in manifest_platform_entries(load_platform_config(args.platform_config))
+        ]
+        platform_overrides = {
+            "iOS": args.ios_deployment_target,
+            "macOS": args.macos_deployment_target,
+        }
+        platform_entries = [
+            (
+                swiftpm_platform,
+                validate_deployment_target(platform_overrides[swiftpm_platform], swiftpm_platform)
+                if platform_overrides.get(swiftpm_platform)
+                else deployment_target,
+            )
+            for swiftpm_platform, deployment_target in platform_entries
+        ]
         manifest = render_manifest(
             validate_version(args.version),
             validate_release_repository(args.release_repository),
             validate_checksum(args.checksum),
-            validate_deployment_target(args.ios_deployment_target, "iOS"),
-            validate_deployment_target(args.macos_deployment_target, "macOS"),
+            platform_entries,
         )
     except ValueError as error:
         parser.error(str(error))

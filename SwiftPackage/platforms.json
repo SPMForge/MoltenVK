@@ -1,0 +1,44 @@
+{
+  "deployment_targets": {
+    "ios": {
+      "swiftpm_platform": "iOS",
+      "version": "14"
+    },
+    "macos": {
+      "swiftpm_platform": "macOS",
+      "version": "11"
+    }
+  },
+  "build_matrix": [
+    {
+      "id": "macos",
+      "family": "macos",
+      "build_flag": "--macos",
+      "destination": "generic/platform=macOS",
+      "sdk": "macosx",
+      "validator_key": "macos",
+      "vtool_platform": "MACOS",
+      "consumer_test": true
+    },
+    {
+      "id": "ios",
+      "family": "ios",
+      "build_flag": "--ios",
+      "destination": "generic/platform=iOS",
+      "sdk": "iphoneos",
+      "validator_key": "ios",
+      "vtool_platform": "IOS",
+      "consumer_test": false
+    },
+    {
+      "id": "ios-simulator",
+      "family": "ios",
+      "build_flag": "--iossim",
+      "destination": "generic/platform=iOS Simulator",
+      "sdk": "iphonesimulator",
+      "validator_key": "ios-simulator",
+      "vtool_platform": "IOSSIMULATOR",
+      "consumer_test": true
+    }
+  ]
+}

@@ -107,6 +107,11 @@ jobs:
           echo "ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${resolved_upstream_ref}"
 
+      - name: Preflight Apple platforms
+        env:
+          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: ./Scripts/SwiftPackage/preflight_apple_platforms.sh
+
       - name: Prep cache key
         id: prep
         env:
