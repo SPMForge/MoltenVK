@@ -247,6 +247,10 @@ jobs:
             ./Scripts/SwiftPackage/prepare_manual_release.sh "$TARGET_VERSION"
           fi
 
+      - name: Show ccache statistics
+        if: always()
+        run: ./Scripts/SwiftPackage/report_ccache_stats.sh "Publish ccache statistics"
+
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ github.token }}
