@@ -147,9 +147,6 @@ overlay_wrapper_files() {
         cp "$ROOT_DIR/Package.swift" "$workspace_root/Package.swift"
     fi
 
-    if [[ -f "$ROOT_DIR/Artifacts/README.md" ]]; then
-        cp "$ROOT_DIR/Artifacts/README.md" "$workspace_root/Artifacts/README.md"
-    fi
 }
 
 seed_dependency_cache_into_workspace() {

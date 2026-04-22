@@ -5,16 +5,17 @@ set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
 source "$(cd "$(dirname "$0")" && pwd)/source_acquisition.sh"
 
+PACKAGE_VERSION="$(read_package_version)"
 PACKAGE_OUTPUT_DIR="$ROOT_DIR/Package/$CONFIGURATION/MoltenVK"
 STATIC_SOURCE="$PACKAGE_OUTPUT_DIR/static/MoltenVK.xcframework"
 STATIC_DEST="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME"
 DYNAMIC_DEST="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME"
-STATIC_ZIP="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME.zip"
-DYNAMIC_ZIP="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.zip"
-HEADERS_ZIP="$ARTIFACTS_DIR/$MOLTENVK_HEADERS_ARCHIVE_NAME"
-STATIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_STATIC_ARTIFACT_NAME.checksum"
-DYNAMIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.checksum"
-HEADERS_CHECKSUM_FILE="$ARTIFACTS_DIR/$MOLTENVK_HEADERS_CHECKSUM_NAME"
+STATIC_ZIP="$ARTIFACTS_DIR/$(static_release_archive_name "$PACKAGE_VERSION")"
+DYNAMIC_ZIP="$ARTIFACTS_DIR/$(dynamic_release_archive_name "$PACKAGE_VERSION")"
+HEADERS_ZIP="$ARTIFACTS_DIR/$(headers_release_archive_name "$PACKAGE_VERSION")"
+STATIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$(static_release_checksum_name "$PACKAGE_VERSION")"
+DYNAMIC_CHECKSUM_FILE="$ARTIFACTS_DIR/$(dynamic_release_checksum_name "$PACKAGE_VERSION")"
+HEADERS_CHECKSUM_FILE="$ARTIFACTS_DIR/$(headers_release_checksum_name "$PACKAGE_VERSION")"
 
 archive_basename_for_platform() {
     case "$1" in
@@ -178,7 +179,19 @@ done
 
 mkdir -p "$ARTIFACTS_DIR"
 rm -rf "$DYNAMIC_DEST" "$STATIC_DEST"
-rm -f "$DYNAMIC_ZIP" "$STATIC_ZIP" "$HEADERS_ZIP" "$DYNAMIC_CHECKSUM_FILE" "$STATIC_CHECKSUM_FILE" "$HEADERS_CHECKSUM_FILE"
+rm -f \
+    "$ARTIFACTS_DIR"/MoltenVK-*.xcframework.zip \
+    "$ARTIFACTS_DIR"/MoltenVK-static-*.xcframework.zip \
+    "$ARTIFACTS_DIR"/MoltenVKHeaders-*.zip \
+    "$ARTIFACTS_DIR"/MoltenVK-*.xcframework.checksum \
+    "$ARTIFACTS_DIR"/MoltenVK-static-*.xcframework.checksum \
+    "$ARTIFACTS_DIR"/MoltenVKHeaders-*.checksum \
+    "$ARTIFACTS_DIR"/MoltenVK.xcframework.zip \
+    "$ARTIFACTS_DIR"/MoltenVK-static.xcframework.zip \
+    "$ARTIFACTS_DIR"/MoltenVKHeaders.zip \
+    "$ARTIFACTS_DIR"/MoltenVK.xcframework.checksum \
+    "$ARTIFACTS_DIR"/MoltenVK-static.xcframework.checksum \
+    "$ARTIFACTS_DIR"/MoltenVKHeaders.checksum
 
 xcframework_args=()
 validator_args=()

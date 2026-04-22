@@ -170,12 +170,8 @@ jobs:
         with:
           name: moltenvk-validation-${{ github.run_id }}
           path: |
-            Artifacts/MoltenVK.xcframework.zip
-            Artifacts/MoltenVK.xcframework.checksum
-            Artifacts/MoltenVK-static.xcframework.zip
-            Artifacts/MoltenVK-static.xcframework.checksum
-            Artifacts/MoltenVKHeaders.zip
-            Artifacts/MoltenVKHeaders.checksum
+            Artifacts/*.zip
+            Artifacts/*.checksum
             Artifacts/MoltenVK.xcframework
             Artifacts/MoltenVK-static.xcframework
           if-no-files-found: ignore

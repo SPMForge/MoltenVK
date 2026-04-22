@@ -4,15 +4,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 source "$ROOT_DIR/Scripts/SwiftPackage/common.sh"
+PACKAGE_VERSION="$(read_package_version)"
 
 DYNAMIC_XCFRAMEWORK="$ROOT_DIR/Artifacts/$MOLTENVK_DYNAMIC_ARTIFACT_NAME"
-DYNAMIC_ZIP="$ROOT_DIR/Artifacts/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.zip"
-DYNAMIC_CHECKSUM="$ROOT_DIR/Artifacts/$MOLTENVK_DYNAMIC_ARTIFACT_NAME.checksum"
+DYNAMIC_ZIP="$ROOT_DIR/Artifacts/$(dynamic_release_archive_name "$PACKAGE_VERSION")"
+DYNAMIC_CHECKSUM="$ROOT_DIR/Artifacts/$(dynamic_release_checksum_name "$PACKAGE_VERSION")"
 STATIC_XCFRAMEWORK="$ROOT_DIR/Artifacts/$MOLTENVK_STATIC_ARTIFACT_NAME"
-STATIC_ZIP="$ROOT_DIR/Artifacts/$MOLTENVK_STATIC_ARTIFACT_NAME.zip"
-STATIC_CHECKSUM="$ROOT_DIR/Artifacts/$MOLTENVK_STATIC_ARTIFACT_NAME.checksum"
-HEADERS_ZIP="$ROOT_DIR/Artifacts/$MOLTENVK_HEADERS_ARCHIVE_NAME"
-HEADERS_CHECKSUM="$ROOT_DIR/Artifacts/$MOLTENVK_HEADERS_CHECKSUM_NAME"
+STATIC_ZIP="$ROOT_DIR/Artifacts/$(static_release_archive_name "$PACKAGE_VERSION")"
+STATIC_CHECKSUM="$ROOT_DIR/Artifacts/$(static_release_checksum_name "$PACKAGE_VERSION")"
+HEADERS_ZIP="$ROOT_DIR/Artifacts/$(headers_release_archive_name "$PACKAGE_VERSION")"
+HEADERS_CHECKSUM="$ROOT_DIR/Artifacts/$(headers_release_checksum_name "$PACKAGE_VERSION")"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-artifacts.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 

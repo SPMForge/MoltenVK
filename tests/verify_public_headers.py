@@ -10,7 +10,9 @@ from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-HEADERS_ARCHIVE = REPO_ROOT / "Artifacts" / "MoltenVKHeaders.zip"
+PACKAGE_VERSION = (REPO_ROOT / "SwiftPackage" / "PackageVersion.txt").read_text().strip()
+HEADERS_ARCHIVE_NAME = f"MoltenVKHeaders-{PACKAGE_VERSION}.zip"
+HEADERS_ARCHIVE = REPO_ROOT / "Artifacts" / HEADERS_ARCHIVE_NAME
 
 EXPECTED_DIRECTORIES = ("MoltenVK", "vulkan", "vk_video")
 EXPECTED_FILES = (
@@ -70,11 +72,11 @@ def main() -> int:
     try:
         with tempfile.TemporaryDirectory(prefix="moltenvk-public-headers.") as temp_dir:
             extracted_root = extract_headers_archive(Path(temp_dir))
-            assert_self_contained_header_tree(extracted_root, "MoltenVKHeaders.zip")
+            assert_self_contained_header_tree(extracted_root, HEADERS_ARCHIVE_NAME)
     except RuntimeError as error:
         return fail(str(error))
 
-    print("MoltenVKHeaders.zip contains a self-contained public header tree")
+    print(f"{HEADERS_ARCHIVE_NAME} contains a self-contained public header tree")
     return 0
 
 

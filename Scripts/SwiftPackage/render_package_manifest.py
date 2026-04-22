@@ -57,7 +57,7 @@ def render_manifest(
 ) -> str:
     remote_url = (
         f"https://github.com/{release_repository}/releases/download/"
-        f"{version}/MoltenVK.xcframework.zip"
+        f"{version}/MoltenVK-{version}.xcframework.zip"
     )
 
     rendered_platforms = "\n".join(

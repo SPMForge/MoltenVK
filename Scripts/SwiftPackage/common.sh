@@ -15,8 +15,6 @@ MOLTENVK_API_HEADERS_DIR="$ROOT_DIR/MoltenVK/MoltenVK/API"
 MOLTENVK_VULKAN_HEADERS_ROOT="$ROOT_DIR/External/Vulkan-Headers/include"
 MOLTENVK_DYNAMIC_ARTIFACT_NAME="MoltenVK.xcframework"
 MOLTENVK_STATIC_ARTIFACT_NAME="MoltenVK-static.xcframework"
-MOLTENVK_HEADERS_ARCHIVE_NAME="MoltenVKHeaders.zip"
-MOLTENVK_HEADERS_CHECKSUM_NAME="${MOLTENVK_HEADERS_ARCHIVE_NAME%.zip}.checksum"
 MOLTENVK_RELEASE_REPOSITORY_FILE="$SWIFT_PACKAGE_DIR/ReleaseRepository.txt"
 MOLTENVK_PACKAGE_VERSION_FILE="$SWIFT_PACKAGE_DIR/PackageVersion.txt"
 MOLTENVK_MERGEABLE_VALIDATOR_PATH="${MVK_MERGEABLE_VALIDATOR_PATH:-$ROOT_DIR/Scripts/SwiftPackage/validate_mergeable_xcframework.py}"
@@ -305,6 +303,36 @@ read_release_repository() {
     repository="$(tr -d '[:space:]' <"$MOLTENVK_RELEASE_REPOSITORY_FILE")"
     [[ -n "$repository" ]] || fail "MoltenVK release repository file is empty: $MOLTENVK_RELEASE_REPOSITORY_FILE"
     printf '%s\n' "$repository"
+}
+
+dynamic_release_archive_name() {
+    local version="${1:-$(read_package_version)}"
+    printf 'MoltenVK-%s.xcframework.zip\n' "$version"
+}
+
+dynamic_release_checksum_name() {
+    local version="${1:-$(read_package_version)}"
+    printf 'MoltenVK-%s.xcframework.checksum\n' "$version"
+}
+
+static_release_archive_name() {
+    local version="${1:-$(read_package_version)}"
+    printf 'MoltenVK-static-%s.xcframework.zip\n' "$version"
+}
+
+static_release_checksum_name() {
+    local version="${1:-$(read_package_version)}"
+    printf 'MoltenVK-static-%s.xcframework.checksum\n' "$version"
+}
+
+headers_release_archive_name() {
+    local version="${1:-$(read_package_version)}"
+    printf 'MoltenVKHeaders-%s.zip\n' "$version"
+}
+
+headers_release_checksum_name() {
+    local version="${1:-$(read_package_version)}"
+    printf 'MoltenVKHeaders-%s.checksum\n' "$version"
 }
 
 dynamic_validator_args() {
