@@ -32,10 +32,13 @@ def load_platform_config(path: str | Path = DEFAULT_PLATFORM_CONFIG_PATH) -> dic
             raise ValueError(f"deployment target entry for {family} must be an object")
         version = entry.get("version")
         swiftpm_platform = entry.get("swiftpm_platform")
+        xcodebuild_setting = entry.get("xcodebuild_setting")
         if not isinstance(version, str) or not version:
             raise ValueError(f"deployment target version for {family} must be a non-empty string")
         if not isinstance(swiftpm_platform, str) or not swiftpm_platform:
             raise ValueError(f"swiftpm_platform for {family} must be a non-empty string")
+        if not isinstance(xcodebuild_setting, str) or not xcodebuild_setting:
+            raise ValueError(f"xcodebuild_setting for {family} must be a non-empty string")
 
     required_build_fields = (
         "id",
@@ -95,6 +98,13 @@ def expected_vtool_platforms(config: dict) -> dict[str, str]:
     return {entry["validator_key"]: entry["vtool_platform"] for entry in config["build_matrix"]}
 
 
+def deployment_target_build_settings(config: dict) -> list[tuple[str, str]]:
+    settings: list[tuple[str, str]] = []
+    for family, entry in config["deployment_targets"].items():
+        settings.append((entry["xcodebuild_setting"], entry["version"]))
+    return settings
+
+
 def bash_array(values: list[str]) -> str:
     return "(" + " ".join(shlex.quote(value) for value in values) + ")"
 
@@ -103,13 +113,21 @@ def render_shell(config: dict) -> str:
     deployment_targets = config["deployment_targets"]
     build_matrix = config["build_matrix"]
     deployment_target_families = list(deployment_targets.keys())
+    deployment_target_build_settings_list = deployment_target_build_settings(config)
 
     lines = [
-        f"MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['ios']['version'])}",
-        f"MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['macos']['version'])}",
+        f"export MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['ios']['version'])}",
+        f"export MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['macos']['version'])}",
+        f"export MOLTENVK_PACKAGE_TVOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['tvos']['version'])}",
+        f"export MOLTENVK_PACKAGE_VISIONOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['visionos']['version'])}",
+        f"export IPHONEOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['ios']['version'])}",
+        f"export MACOSX_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['macos']['version'])}",
+        f"export TVOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['tvos']['version'])}",
+        f"export XROS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['visionos']['version'])}",
         f"MOLTENVK_DEPLOYMENT_TARGET_FAMILIES={bash_array(deployment_target_families)}",
         f"MOLTENVK_DEPLOYMENT_TARGET_SWIFTPM_PLATFORMS={bash_array([deployment_targets[family]['swiftpm_platform'] for family in deployment_target_families])}",
         f"MOLTENVK_DEPLOYMENT_TARGET_VERSIONS={bash_array([deployment_targets[family]['version'] for family in deployment_target_families])}",
+        f"MOLTENVK_DEPLOYMENT_TARGET_BUILD_SETTINGS={bash_array([f'{setting}={version}' for setting, version in deployment_target_build_settings_list])}",
         f"MOLTENVK_PLATFORM_IDS={bash_array([entry['id'] for entry in build_matrix])}",
         f"MOLTENVK_PLATFORM_FAMILIES={bash_array([entry['family'] for entry in build_matrix])}",
         f"MOLTENVK_PLATFORM_BUILD_FLAGS={bash_array([entry['build_flag'] for entry in build_matrix])}",

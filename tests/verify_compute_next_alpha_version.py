@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -38,6 +39,32 @@ class ComputeNextAlphaVersionTests(unittest.TestCase):
         parsed = module.parse_tag_as_version("MoltenVK-v1.2.3", list(module.DEFAULT_TAG_PREFIXES))
         self.assertIsNotNone(parsed)
         self.assertEqual(str(parsed), "1.2.3")
+
+    def test_list_release_tags_prefers_github_release_state_when_repo_is_provided(self) -> None:
+        original_git_tags = module.list_git_release_tags
+        original_github_tags = module.list_github_release_tags
+        try:
+            module.list_git_release_tags = lambda: ["1.2.3-alpha.4"]
+            module.list_github_release_tags = lambda repo: [] if repo else ["1.2.3-alpha.4"]
+            parsed = module.list_release_tags([""], "SPMForge/MoltenVK")
+            self.assertEqual(parsed, [])
+        finally:
+            module.list_git_release_tags = original_git_tags
+            module.list_github_release_tags = original_github_tags
+
+    def test_list_github_release_tags_fails_loudly_when_gh_query_fails(self) -> None:
+        original_run = module.subprocess.run
+        try:
+            module.subprocess.run = lambda *args, **kwargs: subprocess.CompletedProcess(
+                args=args[0],
+                returncode=1,
+                stdout="",
+                stderr="authentication failed",
+            )
+            with self.assertRaises(SystemExit):
+                module.list_github_release_tags("SPMForge/MoltenVK")
+        finally:
+            module.subprocess.run = original_run
 
 
 if __name__ == "__main__":

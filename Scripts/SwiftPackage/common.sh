@@ -121,6 +121,18 @@ deployment_target_version_for_family() {
     printf '%s\n' "${MOLTENVK_DEPLOYMENT_TARGET_VERSIONS[$index]}"
 }
 
+deployment_target_build_setting_for_family() {
+    local index
+    index="$(deployment_target_index_by_family "$1")" || fail "Unknown deployment target family in platform config: $1"
+    printf '%s\n' "${MOLTENVK_DEPLOYMENT_TARGET_BUILD_SETTINGS[$index]}"
+}
+
+platform_deployment_target_build_setting_for_id() {
+    local index
+    index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
+    deployment_target_build_setting_for_family "${MOLTENVK_PLATFORM_FAMILIES[$index]}"
+}
+
 platform_consumer_test_enabled_for_id() {
     local index
     index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
@@ -495,6 +507,7 @@ archive_dynamic_framework() {
     local scheme="$2"
     local destination="$3"
     local archive_path="$4"
+    local platform_id="$5"
     local command=(
         xcodebuild archive
         -project "$project_path"
@@ -509,6 +522,7 @@ archive_dynamic_framework() {
     fi
 
     command+=(
+        "$(platform_deployment_target_build_setting_for_id "$platform_id")"
         SKIP_INSTALL=NO
         MERGEABLE_LIBRARY=YES
         BUILD_LIBRARY_FOR_DISTRIBUTION=YES

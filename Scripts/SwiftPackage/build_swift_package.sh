@@ -108,6 +108,7 @@ fi
 run_packaging_build() {
     local scheme="$1"
     local destination="$2"
+    local platform_id="$3"
     local command=(
         xcodebuild build
         -project "$MOLTENVK_PACKAGING_PROJECT"
@@ -120,7 +121,10 @@ run_packaging_build() {
         command+=("${CCACHE_BUILD_ARGS[@]}")
     fi
 
-    command+=('GCC_PREPROCESSOR_DEFINITIONS=$inherited MVK_USE_METAL_PRIVATE_API=0')
+    command+=(
+        "$(platform_deployment_target_build_setting_for_id "$platform_id")"
+        'GCC_PREPROCESSOR_DEFINITIONS=$inherited MVK_USE_METAL_PRIVATE_API=0'
+    )
 
     "${command[@]}"
 }
@@ -189,7 +193,8 @@ for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
         "$local_workspace/MoltenVK/MoltenVK.xcodeproj" \
         "$(dynamic_scheme_for_platform "$platform_id" "$local_workspace/MoltenVK/MoltenVK.xcodeproj")" \
         "$(platform_destination_for_id "$platform_id")" \
-        "$archives_dir/$(archive_basename_for_platform "$platform_id").xcarchive"
+        "$archives_dir/$(archive_basename_for_platform "$platform_id").xcarchive" \
+        "$platform_id"
 done
 
 mkdir -p "$ARTIFACTS_DIR"
@@ -234,7 +239,8 @@ log "Building legacy static MoltenVK XCFramework slices"
 for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
     run_packaging_build \
         "$(packaging_scheme_for_platform "$platform_id")" \
-        "$(platform_destination_for_id "$platform_id")"
+        "$(platform_destination_for_id "$platform_id")" \
+        "$platform_id"
 done
 
 require_path "$STATIC_SOURCE"

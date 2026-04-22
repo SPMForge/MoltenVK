@@ -227,23 +227,6 @@ jobs:
           echo "Resolved upstream ref: ${resolved_upstream_ref}"
           echo "Resolved package version: ${target_version}"
 
-      - name: Verify release tag and release do not already exist
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-          TARGET_VERSION: ${{ steps.release_target.outputs.target_version }}
-        run: |
-          git fetch --force --tags origin
-          for candidate_tag in "${TARGET_VERSION}" "MoltenVK-v${TARGET_VERSION}"; do
-            if git rev-parse -q --verify "refs/tags/${candidate_tag}" >/dev/null; then
-              echo "error: release tag already exists for package version ${TARGET_VERSION}: ${candidate_tag}" >&2
-              exit 1
-            fi
-            if gh release view "${candidate_tag}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-              echo "error: release already exists for package version ${TARGET_VERSION}: ${candidate_tag}" >&2
-              exit 1
-            fi
-          done
-
       - name: Prepare release artifacts
         env:
           SKIP_DEPENDENCY_FETCH: "1"

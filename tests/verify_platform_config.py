@@ -51,6 +51,18 @@ class PlatformConfigTests(unittest.TestCase):
             },
         )
 
+    def test_deployment_target_build_settings_follow_platform_config(self) -> None:
+        config = platform_config.load_platform_config()
+        self.assertEqual(
+            platform_config.deployment_target_build_settings(config),
+            [
+                ("IPHONEOS_DEPLOYMENT_TARGET", "14"),
+                ("MACOSX_DEPLOYMENT_TARGET", "11"),
+                ("TVOS_DEPLOYMENT_TARGET", "14"),
+                ("XROS_DEPLOYMENT_TARGET", "1"),
+            ],
+        )
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(PlatformConfigTests)

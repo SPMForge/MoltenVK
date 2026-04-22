@@ -25,6 +25,59 @@ PREPARED_WORKSPACE_ROOT="$(tr -d '[:space:]' <"$MOLTENVK_PREPARED_WORKSPACE_RECO
 [[ -n "$PREPARED_WORKSPACE_ROOT" ]] || fail "Prepared workspace record is empty: $MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
 [[ -d "$PREPARED_WORKSPACE_ROOT" ]] || fail "Prepared workspace does not exist: $PREPARED_WORKSPACE_ROOT"
 
+release_notes() {
+    if [[ "$RELEASE_KIND" == "alpha" ]]; then
+        printf 'Automated alpha Swift Package release for MoltenVK %s from upstream %s.\n' "$TARGET_VERSION" "$UPSTREAM_SOURCE_REF"
+    else
+        printf 'Manual stable Swift Package release for MoltenVK %s from upstream %s.\n' "$TARGET_VERSION" "$UPSTREAM_SOURCE_REF"
+    fi
+}
+
+release_exists() {
+    gh release view "$TARGET_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1
+}
+
+ensure_release_tag() {
+    git fetch --force --tags origin
+    if git ls-remote --exit-code --tags origin "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    if ! git rev-parse -q --verify "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1; then
+        git checkout origin/main
+        git tag -a "${TARGET_VERSION}" -m "${TARGET_VERSION}"
+    fi
+
+    git push origin "refs/tags/${TARGET_VERSION}"
+}
+
+normalize_release_metadata() {
+    local release_edit_args=(
+        "$TARGET_VERSION"
+        --repo "$GITHUB_REPOSITORY"
+        --title "$TARGET_VERSION"
+        --notes "$(release_notes)"
+        --draft=false
+    )
+    local release_create_args=(
+        "$TARGET_VERSION"
+        --repo "$GITHUB_REPOSITORY"
+        --title "$TARGET_VERSION"
+        --notes "$(release_notes)"
+    )
+
+    if [[ "$RELEASE_KIND" == "alpha" ]]; then
+        release_edit_args+=(--prerelease --latest=false)
+        release_create_args+=(--prerelease --latest=false)
+    fi
+
+    if release_exists; then
+        gh release edit "${release_edit_args[@]}"
+    else
+        gh release create "${release_create_args[@]}" --verify-tag
+    fi
+}
+
 cd "$ROOT_DIR"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -45,37 +98,22 @@ git add \
 git add Artifacts/*.checksum
 
 if git diff --cached --quiet; then
-    if [[ "$RELEASE_KIND" == "alpha" ]]; then
-        fail "Alpha release preparation did not produce any metadata changes."
-    fi
+    :
 else
     git commit -m "chore(release): MoltenVK ${TARGET_VERSION} [skip ci]"
     git push origin HEAD:main
 fi
 
-git fetch origin main
-git checkout origin/main
-git tag -a "${TARGET_VERSION}" -m "${TARGET_VERSION}"
-git push origin "${TARGET_VERSION}"
-
-release_args=(
-    "${TARGET_VERSION}"
-    "${dynamic_zip_path}"
-    "${dynamic_checksum_path}"
-    "${static_zip_path}"
-    "${static_checksum_path}"
-    "${headers_zip_path}"
-    "${headers_checksum_path}"
-    --repo "$GITHUB_REPOSITORY"
-    --title "${TARGET_VERSION}"
-)
-
-if [[ "$RELEASE_KIND" == "alpha" ]]; then
-    release_args+=(--prerelease --notes "Automated alpha Swift Package release for MoltenVK ${TARGET_VERSION} from upstream ${UPSTREAM_SOURCE_REF}.")
-else
-    release_args+=(--notes "Manual stable Swift Package release for MoltenVK ${TARGET_VERSION} from upstream ${UPSTREAM_SOURCE_REF}.")
-fi
-
-gh release create "${release_args[@]}"
+ensure_release_tag
+normalize_release_metadata
+gh release upload "$TARGET_VERSION" \
+    "$dynamic_zip_path" \
+    "$dynamic_checksum_path" \
+    "$static_zip_path" \
+    "$static_checksum_path" \
+    "$headers_zip_path" \
+    "$headers_checksum_path" \
+    --repo "$GITHUB_REPOSITORY" \
+    --clobber
 rm -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
 rm -rf "$PREPARED_WORKSPACE_ROOT"

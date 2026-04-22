@@ -2,19 +2,23 @@
   "deployment_targets": {
     "ios": {
       "swiftpm_platform": "iOS",
-      "version": "14"
+      "version": "14",
+      "xcodebuild_setting": "IPHONEOS_DEPLOYMENT_TARGET"
     },
     "macos": {
       "swiftpm_platform": "macOS",
-      "version": "11"
+      "version": "11",
+      "xcodebuild_setting": "MACOSX_DEPLOYMENT_TARGET"
     },
     "tvos": {
       "swiftpm_platform": "tvOS",
-      "version": "14"
+      "version": "14",
+      "xcodebuild_setting": "TVOS_DEPLOYMENT_TARGET"
     },
     "visionos": {
       "swiftpm_platform": "visionOS",
-      "version": "1"
+      "version": "1",
+      "xcodebuild_setting": "XROS_DEPLOYMENT_TARGET"
     }
   },
   "build_matrix": [

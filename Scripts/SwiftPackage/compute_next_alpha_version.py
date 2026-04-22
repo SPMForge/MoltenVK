@@ -145,18 +145,18 @@ def list_github_release_tags(repo: str | None) -> list[str]:
         capture_output=True,
     )
     if completed.returncode != 0:
-        return []
+        fail(f"Unable to query GitHub releases for {repo}: {completed.stderr.strip() or completed.stdout.strip() or 'gh release list failed'}")
 
     try:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError:
-        return []
+        fail(f"Unable to parse GitHub release metadata for {repo}.")
 
     return [item["tagName"] for item in payload if isinstance(item, dict) and isinstance(item.get("tagName"), str)]
 
 
 def list_release_tags(prefixes: list[str], repo: str | None) -> list[tuple[str, Version]]:
-    raw_identifiers = list_git_release_tags()
+    raw_identifiers = list_git_release_tags() if not repo else []
     raw_identifiers.extend(list_github_release_tags(repo))
     return parse_release_identifiers(raw_identifiers, prefixes)
 
