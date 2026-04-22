@@ -1,5 +1,0 @@
-module MoltenVK {
-  umbrella "."
-  export *
-  module * { export * }
-}
