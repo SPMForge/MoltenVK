@@ -1,11 +1,10 @@
 name: Publish Latest Upstream Alpha
 
-run-name: Auto alpha publish from latest upstream stable
+run-name: Latest upstream alpha publish
 
 on:
-  push:
-    branches:
-      - main
+  schedule:
+    - cron: "19 3 * * *"
   workflow_dispatch:
 
 permissions:

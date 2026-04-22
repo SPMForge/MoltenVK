@@ -71,7 +71,7 @@ CI topology
 - `.github/workflows/publish-package-release-core.yml`
   - shared reusable release workflow invoked by thin publish entrypoints
 - `.github/workflows/publish-latest-upstream-alpha.yml`
-  - `push` to `main` publishes the latest upstream alpha package release
+  - `schedule` plus `workflow_dispatch` publishes the latest upstream alpha package release
 - `.github/workflows/publish-upstream-release-manually.yml`
   - `workflow_dispatch` publishes the requested upstream tag as alpha or stable
 

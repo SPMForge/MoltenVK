@@ -147,6 +147,9 @@ assert_contains ".github/workflows/publish-package-release-core.yml" "./Scripts/
 
 assert_file ".github/workflows/publish-latest-upstream-alpha.yml"
 assert_contains ".github/workflows/publish-latest-upstream-alpha.yml" "name: Publish Latest Upstream Alpha"
+assert_contains ".github/workflows/publish-latest-upstream-alpha.yml" "schedule:"
+assert_contains ".github/workflows/publish-latest-upstream-alpha.yml" "workflow_dispatch:"
+assert_not_contains ".github/workflows/publish-latest-upstream-alpha.yml" "push:"
 assert_contains ".github/workflows/publish-latest-upstream-alpha.yml" "uses: ./.github/workflows/publish-package-release-core.yml"
 
 assert_file ".github/workflows/publish-upstream-release-manually.yml"
