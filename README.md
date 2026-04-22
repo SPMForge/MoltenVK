@@ -17,7 +17,7 @@ Package contract
 
 - Package name: `MoltenVK`
 - Product name: `MoltenVK`
-- Binary target: `MoltenVKBinary`
+- Binary target: `MoltenVK`
 - Release tag format: `MoltenVK-v<version>`
 - Primary SwiftPM asset: `MoltenVK.xcframework.zip`
 - Additional release assets:
@@ -41,6 +41,8 @@ Build and release flow
 - `Scripts/SwiftPackage/build_swift_package.sh`
   - exports the requested upstream snapshot
   - builds mergeable dynamic MoltenVK archives
+  - stages the public headers and explicit `module.modulemap` inside each `MoltenVK.framework` slice in the final `MoltenVK.xcframework`
+  - materializes `MoltenVKHeaders.zip` as an auxiliary native-consumer headers asset without storing those headers in the wrapper repository
   - assembles XCFramework artifacts
   - computes checksums from the final zip archives
   - renders `Package.swift`
@@ -48,6 +50,14 @@ Build and release flow
   - commits generated metadata
   - creates the package tag
   - creates the GitHub Release
+
+Public headers contract
+-----------------------
+
+- The SwiftPM package no longer relies on a wrapper source target or repo-local `publicHeadersPath`.
+- The importable `MoltenVK` module surface lives inside each `MoltenVK.framework` slice as framework-internal `Headers` plus `Modules/module.modulemap`.
+- `Artifacts/MoltenVKHeaders.zip` remains an auxiliary native-consumer asset built from temporary staging, not from checked-in wrapper headers.
+- The wrapper repository must not keep a checked-in `Sources/MoltenVK/include` tree to satisfy SwiftPM import behavior.
 
 CI topology
 -----------
@@ -67,3 +77,5 @@ Consumer note
 -------------
 
 When integrating this package into a Release configuration that enables merged binaries, set `MERGED_BINARY_TYPE=automatic`.
+
+For package consumers, the framework slices carry the public headers and module map internally, so the SwiftPM import surface is defined by the distributed `MoltenVK.xcframework`, not by wrapper-repo checkout headers.

@@ -45,6 +45,30 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
         (framework_path / "Resources").symlink_to("Versions/Current/Resources", target_is_directory=True)
         return framework_path, binary_path
 
+    def add_mobile_framework_interface(self, framework_path: Path) -> None:
+        headers_dir = framework_path / "Headers"
+        modules_dir = framework_path / "Modules"
+        headers_dir.mkdir()
+        modules_dir.mkdir()
+        (headers_dir / "mvk_vulkan.h").write_text("#pragma once\n", encoding="utf-8")
+        (modules_dir / "module.modulemap").write_text(
+            'framework module MoltenVK { header "mvk_vulkan.h" export * }\n',
+            encoding="utf-8",
+        )
+
+    def add_macos_framework_interface(self, framework_path: Path) -> None:
+        headers_dir = framework_path / "Versions" / "A" / "Headers"
+        modules_dir = framework_path / "Versions" / "A" / "Modules"
+        headers_dir.mkdir()
+        modules_dir.mkdir()
+        (headers_dir / "mvk_vulkan.h").write_text("#pragma once\n", encoding="utf-8")
+        (modules_dir / "module.modulemap").write_text(
+            'framework module MoltenVK { header "mvk_vulkan.h" export * }\n',
+            encoding="utf-8",
+        )
+        (framework_path / "Headers").symlink_to("Versions/Current/Headers", target_is_directory=True)
+        (framework_path / "Modules").symlink_to("Versions/Current/Modules", target_is_directory=True)
+
     def test_platform_key_includes_variant(self) -> None:
         self.assertEqual(
             validator.platform_key(
@@ -112,6 +136,36 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
         self.assertIn("macos: missing versioned framework directory", issues[0])
         self.assertTrue(any("top-level framework binary is not a symlink" in issue for issue in issues))
         self.assertTrue(any("top-level Resources is not a symlink" in issue for issue in issues))
+
+    def test_mobile_framework_interface_accepts_headers_and_modulemap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path = Path(tmp_dir) / "MoltenVK.framework"
+            framework_path.mkdir()
+            self.add_mobile_framework_interface(framework_path)
+            issues = validator.framework_interface_issues("ios", framework_path)
+        self.assertEqual(issues, [])
+
+    def test_mobile_framework_interface_rejects_missing_headers_and_modules(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path = Path(tmp_dir) / "MoltenVK.framework"
+            framework_path.mkdir()
+            issues = validator.framework_interface_issues("ios", framework_path)
+        self.assertTrue(any("missing framework headers directory" in issue for issue in issues))
+        self.assertTrue(any("missing framework module map" in issue for issue in issues))
+
+    def test_macos_framework_interface_requires_versioned_headers_and_modulemap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path, _ = self.make_versioned_framework(Path(tmp_dir))
+            self.add_macos_framework_interface(framework_path)
+            issues = validator.framework_interface_issues("macos", framework_path)
+        self.assertEqual(issues, [])
+
+    def test_macos_framework_interface_rejects_missing_versioned_surface(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path, _ = self.make_versioned_framework(Path(tmp_dir))
+            issues = validator.framework_interface_issues("macos", framework_path)
+        self.assertTrue(any("missing versioned framework headers directory" in issue for issue in issues))
+        self.assertTrue(any("missing versioned framework module map" in issue for issue in issues))
 
 
 if __name__ == "__main__":

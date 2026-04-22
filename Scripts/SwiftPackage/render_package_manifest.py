@@ -82,13 +82,13 @@ let remoteChecksum = "{checksum}"
 let moltenVKTarget: Target = {{
     if FileManager.default.fileExists(atPath: localArtifactPath) {{
         return .binaryTarget(
-            name: "MoltenVKBinary",
+            name: "MoltenVK",
             path: "Artifacts/MoltenVK.xcframework"
         )
     }}
 
     return .binaryTarget(
-        name: "MoltenVKBinary",
+        name: "MoltenVK",
         url: remoteArtifactURL,
         checksum: remoteChecksum
     )
@@ -106,24 +106,6 @@ let package = Package(
         ),
     ],
     targets: [
-        .target(
-            name: "MoltenVK",
-            dependencies: ["MoltenVKBinary"],
-            path: "Sources/MoltenVK",
-            publicHeadersPath: "include",
-            linkerSettings: [
-                .linkedFramework("CoreFoundation"),
-                .linkedFramework("Foundation"),
-                .linkedFramework("Metal"),
-                .linkedFramework("QuartzCore"),
-                .linkedFramework("CoreGraphics"),
-                .linkedFramework("UIKit", .when(platforms: [.iOS])),
-                .linkedFramework("Cocoa", .when(platforms: [.macOS])),
-                .linkedFramework("IOKit", .when(platforms: [.macOS])),
-                .linkedFramework("IOSurface", .when(platforms: [.macOS])),
-                .linkedLibrary("c++"),
-            ]
-        ),
         moltenVKTarget,
     ]
 )

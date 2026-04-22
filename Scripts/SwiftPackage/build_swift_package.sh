@@ -103,7 +103,11 @@ require_path "$ROOT_DIR/fetchDependencies"
 require_path "$MOLTENVK_PROJECT"
 require_path "$MOLTENVK_PACKAGING_PROJECT"
 require_path "$MOLTENVK_INCLUDE_DIR"
+require_path "$MOLTENVK_API_HEADERS_DIR"
+require_path "$MOLTENVK_VULKAN_HEADERS_ROOT/vulkan"
+require_path "$MOLTENVK_VULKAN_HEADERS_ROOT/vk_video"
 require_path "$MOLTENVK_MERGEABLE_VALIDATOR_PATH"
+require_path "$MOLTENVK_PUBLIC_HEADERS_SCRIPT"
 
 parse_requested_platforms "$@"
 setup_ccache
@@ -124,12 +128,16 @@ fi
 
 local_workspace=""
 archives_dir=""
+public_headers_workspace=""
 cleanup() {
     if [[ -n "$local_workspace" ]]; then
         rm -rf "$local_workspace"
     fi
     if [[ -n "$archives_dir" ]]; then
         rm -rf "$archives_dir"
+    fi
+    if [[ -n "$public_headers_workspace" ]]; then
+        rm -rf "$public_headers_workspace"
     fi
     cleanup_ccache
     return 0
@@ -138,6 +146,8 @@ trap cleanup EXIT
 
 local_workspace="$(prepare_patched_swift_package_workspace)"
 archives_dir="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-swift-package-archives.XXXXXX")"
+public_headers_workspace="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-public-headers.XXXXXX")"
+public_headers_include_dir="$public_headers_workspace/include"
 
 log "Archiving mergeable MoltenVK runtime slices"
 for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
@@ -165,6 +175,11 @@ for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
 done
 
 xcodebuild -create-xcframework "${xcframework_args[@]}" -output "$DYNAMIC_DEST"
+python3 "$MOLTENVK_PUBLIC_HEADERS_SCRIPT" \
+    --moltenvk-api-dir "$MOLTENVK_API_HEADERS_DIR" \
+    --vulkan-headers-root "$MOLTENVK_VULKAN_HEADERS_ROOT" \
+    --output-dir "$public_headers_include_dir" \
+    --xcframework-path "$DYNAMIC_DEST"
 python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" \
     "$DYNAMIC_DEST" \
     "${validator_args[@]}"
@@ -180,9 +195,9 @@ require_path "$STATIC_SOURCE"
 cp -R "$STATIC_SOURCE" "$STATIC_DEST"
 
 log "Packaging release artifacts"
-ditto -c -k --keepParent "$DYNAMIC_DEST" "$DYNAMIC_ZIP"
-ditto -c -k --keepParent "$STATIC_DEST" "$STATIC_ZIP"
-ditto -c -k --keepParent "$MOLTENVK_INCLUDE_DIR" "$HEADERS_ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent "$DYNAMIC_DEST" "$DYNAMIC_ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent "$STATIC_DEST" "$STATIC_ZIP"
+COPYFILE_DISABLE=1 ditto -c -k --keepParent "$public_headers_include_dir" "$HEADERS_ZIP"
 
 swift package compute-checksum "$DYNAMIC_ZIP" >"$DYNAMIC_CHECKSUM_FILE"
 swift package compute-checksum "$STATIC_ZIP" >"$STATIC_CHECKSUM_FILE"

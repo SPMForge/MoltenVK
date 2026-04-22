@@ -93,6 +93,49 @@ def macos_framework_layout_issues(framework_path: Path, binary_path: Path) -> li
     return issues
 
 
+def framework_interface_issues(platform: str, framework_path: Path) -> list[str]:
+    issues: list[str] = []
+
+    if platform == "macos":
+        version_a_dir = framework_path / "Versions" / "A"
+        headers_dir = version_a_dir / "Headers"
+        modules_dir = version_a_dir / "Modules"
+        top_level_headers = framework_path / "Headers"
+        top_level_modules = framework_path / "Modules"
+
+        if not headers_dir.is_dir():
+            issues.append(f"{platform}: missing versioned framework headers directory {headers_dir}")
+        if not modules_dir.is_dir():
+            issues.append(f"{platform}: missing versioned framework modules directory {modules_dir}")
+        if not (modules_dir / "module.modulemap").is_file():
+            issues.append(f"{platform}: missing versioned framework module map {(modules_dir / 'module.modulemap')}")
+        if not (headers_dir / "mvk_vulkan.h").is_file():
+            issues.append(f"{platform}: missing framework public header {(headers_dir / 'mvk_vulkan.h')}")
+        if not top_level_headers.is_symlink():
+            issues.append(f"{platform}: top-level Headers is not a symlink ({top_level_headers})")
+        elif headers_dir.exists() and top_level_headers.resolve() != headers_dir.resolve():
+            issues.append(f"{platform}: top-level Headers does not resolve to {headers_dir}")
+        if not top_level_modules.is_symlink():
+            issues.append(f"{platform}: top-level Modules is not a symlink ({top_level_modules})")
+        elif modules_dir.exists() and top_level_modules.resolve() != modules_dir.resolve():
+            issues.append(f"{platform}: top-level Modules does not resolve to {modules_dir}")
+        return issues
+
+    headers_dir = framework_path / "Headers"
+    modules_dir = framework_path / "Modules"
+    modulemap_path = modules_dir / "module.modulemap"
+
+    if not headers_dir.is_dir():
+        issues.append(f"{platform}: missing framework headers directory {headers_dir}")
+    if not modules_dir.is_dir():
+        issues.append(f"{platform}: missing framework modules directory {modules_dir}")
+    if not modulemap_path.is_file():
+        issues.append(f"{platform}: missing framework module map {modulemap_path}")
+    if not (headers_dir / "mvk_vulkan.h").is_file():
+        issues.append(f"{platform}: missing framework public header {(headers_dir / 'mvk_vulkan.h')}")
+    return issues
+
+
 def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str, object]:
     library_identifier = entry.get("LibraryIdentifier")
     library_name = entry.get("LibraryPath")
@@ -127,6 +170,8 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
 
     if platform == "macos" and library_path is not None and library_path.suffix == ".framework" and library_path.exists():
         result["macos_framework_layout_issues"] = macos_framework_layout_issues(library_path, binary_path)
+    if library_path is not None and library_path.suffix == ".framework" and library_path.exists():
+        result["framework_interface_issues"] = framework_interface_issues(platform, library_path)
 
     if not shutil.which("xcrun"):
         result["vtool_error"] = "xcrun is unavailable"
@@ -175,6 +220,10 @@ def entry_issues(entry: dict[str, object]) -> list[str]:
     if isinstance(macos_framework_layout_issues, list):
         issues.extend(str(issue) for issue in macos_framework_layout_issues)
 
+    framework_interface_issues = entry.get("framework_interface_issues")
+    if isinstance(framework_interface_issues, list):
+        issues.extend(str(issue) for issue in framework_interface_issues)
+
     return issues
 
 
@@ -209,7 +258,7 @@ def inspect_xcframework(xcframework_path: Path) -> dict[str, object]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate mergeable XCFramework metadata and binary slices.")
+    parser = argparse.ArgumentParser(description="Validate mergeable XCFramework metadata, slice binaries, and framework interface surface.")
     parser.add_argument("paths", nargs="+", help="XCFramework paths or directories that contain XCFrameworks.")
     parser.add_argument(
         "--require-platform",

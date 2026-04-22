@@ -49,6 +49,14 @@ while IFS= read -r validator_arg; do
 done < <(configured_validator_args)
 python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" "$DYNAMIC_XCFRAMEWORK" "${validator_args[@]}"
 
+EXTRACTED_DYNAMIC_ROOT="$TMP_DIR/extracted-dynamic"
+mkdir -p "$EXTRACTED_DYNAMIC_ROOT"
+ditto -x -k "$DYNAMIC_ZIP" "$EXTRACTED_DYNAMIC_ROOT"
+assert_dir "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework"
+python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework" "${validator_args[@]}"
+
+python3 "$ROOT_DIR/tests/verify_public_headers.py"
+
 swift package dump-package >/dev/null
 
 echo "MoltenVK Swift package artifacts verified"

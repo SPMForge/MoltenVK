@@ -9,19 +9,19 @@ let localArtifactPath = URL(fileURLWithPath: #filePath)
     .appendingPathComponent("Artifacts/MoltenVK.xcframework")
     .path
 
-let remoteArtifactURL = "https://github.com/SPMForge/MoltenVK/releases/download/MoltenVK-v1.4.1-alpha.6/MoltenVK.xcframework.zip"
-let remoteChecksum = "05058cabd658b690062582b2c3807cd530421ad7e562b22ad6c1edc653c0a85b"
+let remoteArtifactURL = "https://github.com/SPMForge/MoltenVK/releases/download/MoltenVK-v1.4.1-alpha.5/MoltenVK.xcframework.zip"
+let remoteChecksum = "cc811b816a653c3a1a3e6fafa6b0392315f0c060174c367212057d339e47bf3d"
 
 let moltenVKTarget: Target = {
     if FileManager.default.fileExists(atPath: localArtifactPath) {
         return .binaryTarget(
-            name: "MoltenVKBinary",
+            name: "MoltenVK",
             path: "Artifacts/MoltenVK.xcframework"
         )
     }
 
     return .binaryTarget(
-        name: "MoltenVKBinary",
+        name: "MoltenVK",
         url: remoteArtifactURL,
         checksum: remoteChecksum
     )
@@ -40,24 +40,6 @@ let package = Package(
         ),
     ],
     targets: [
-        .target(
-            name: "MoltenVK",
-            dependencies: ["MoltenVKBinary"],
-            path: "Sources/MoltenVK",
-            publicHeadersPath: "include",
-            linkerSettings: [
-                .linkedFramework("CoreFoundation"),
-                .linkedFramework("Foundation"),
-                .linkedFramework("Metal"),
-                .linkedFramework("QuartzCore"),
-                .linkedFramework("CoreGraphics"),
-                .linkedFramework("UIKit", .when(platforms: [.iOS])),
-                .linkedFramework("Cocoa", .when(platforms: [.macOS])),
-                .linkedFramework("IOKit", .when(platforms: [.macOS])),
-                .linkedFramework("IOSurface", .when(platforms: [.macOS])),
-                .linkedLibrary("c++"),
-            ]
-        ),
         moltenVKTarget,
     ]
 )

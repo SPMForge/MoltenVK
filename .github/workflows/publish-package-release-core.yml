@@ -139,8 +139,8 @@ jobs:
             git ls-files --stage -- \
               'Scripts/SwiftPackage/build_swift_package.sh' \
               'Scripts/SwiftPackage/common.sh' \
+              'Scripts/SwiftPackage/materialize_public_headers.py' \
               'Scripts/SwiftPackage/source_acquisition.sh' \
-              'Sources' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
