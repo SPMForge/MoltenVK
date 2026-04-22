@@ -9,8 +9,8 @@ let localArtifactPath = URL(fileURLWithPath: #filePath)
     .appendingPathComponent("Artifacts/MoltenVK.xcframework")
     .path
 
-let remoteArtifactURL = "https://github.com/SPMForge/MoltenVK/releases/download/MoltenVK-v1.4.1-alpha.5/MoltenVK.xcframework.zip"
-let remoteChecksum = "cc811b816a653c3a1a3e6fafa6b0392315f0c060174c367212057d339e47bf3d"
+let remoteArtifactURL = "https://github.com/SPMForge/MoltenVK/releases/download/MoltenVK-v1.4.1-alpha.7/MoltenVK.xcframework.zip"
+let remoteChecksum = "ae3de5d5d93cb4c4a29ea8022c17ee438d749142f136e20d5cf0b3b304b16456"
 
 let moltenVKTarget: Target = {
     if FileManager.default.fileExists(atPath: localArtifactPath) {
