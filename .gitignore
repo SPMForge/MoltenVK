@@ -25,6 +25,10 @@ build/
 *.[oa]
 node_modules/
 
+# Python
+__pycache__/
+*.py[cod]
+
 # Other source repository archive directories (protects when importing)
 .hg
 .svn
