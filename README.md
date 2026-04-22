@@ -19,7 +19,8 @@ Package contract
 - Product name: `MoltenVK`
 - Binary target: `MoltenVK`
 - Supported SwiftPM platform families: `iOS`, `macOS`, `tvOS`, and `visionOS`
-- Release tag format: `MoltenVK-v<version>`
+- Release tag format: `<version>` (plain SemVer, no prefix)
+- Historical `MoltenVK-v<version>` tags are treated as legacy-only inputs during alpha-version discovery and duplicate-release checks.
 - Primary SwiftPM asset: `MoltenVK.xcframework.zip`
 - Additional release assets:
   - `MoltenVK-static.xcframework.zip`
@@ -51,7 +52,7 @@ Build and release flow
   - renders `Package.swift`
 - `Scripts/SwiftPackage/publish_release.sh`
   - commits generated metadata
-  - creates the package tag
+  - creates the plain-SemVer package tag
   - creates the GitHub Release
 
 Public headers contract

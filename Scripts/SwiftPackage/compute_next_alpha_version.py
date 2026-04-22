@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 
 VERSION_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)(?:-alpha\.(?P<alpha>\d+))?$")
+DEFAULT_TAG_PREFIXES = ("", "MoltenVK-v")
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,10 @@ def parse_version(raw: str) -> Version:
     match = VERSION_RE.fullmatch(raw.strip())
     if not match:
         fail(f"Invalid version: {raw}")
+    return version_from_match(match)
+
+
+def version_from_match(match: re.Match[str]) -> Version:
     groups = match.groupdict()
     alpha = groups["alpha"]
     return Version(
@@ -55,6 +60,13 @@ def parse_version(raw: str) -> Version:
         patch=int(groups["patch"]),
         alpha=int(alpha) if alpha is not None else None,
     )
+
+
+def try_parse_version(raw: str) -> Version | None:
+    match = VERSION_RE.fullmatch(raw.strip())
+    if not match:
+        return None
+    return version_from_match(match)
 
 
 def run_git(args: list[str]) -> str:
@@ -67,19 +79,42 @@ def run_git(args: list[str]) -> str:
     return completed.stdout
 
 
-def parse_release_identifiers(raw_identifiers: list[str], prefix: str) -> list[tuple[str, Version]]:
+def normalize_prefixes(prefixes: list[str]) -> list[str]:
+    normalized: list[str] = []
+    seen: set[str] = set()
+    for prefix in prefixes:
+        if prefix in seen:
+            continue
+        seen.add(prefix)
+        normalized.append(prefix)
+    return normalized
+
+
+def parse_tag_as_version(raw_tag: str, prefixes: list[str]) -> Version | None:
+    for prefix in prefixes:
+        if prefix:
+            if not raw_tag.startswith(prefix):
+                continue
+            candidate = raw_tag.removeprefix(prefix)
+        else:
+            candidate = raw_tag
+
+        parsed = try_parse_version(candidate)
+        if parsed is not None:
+            return parsed
+
+    return None
+
+
+def parse_release_identifiers(raw_identifiers: list[str], prefixes: list[str]) -> list[tuple[str, Version]]:
     tags: list[tuple[str, Version]] = []
     seen: set[str] = set()
     for raw_tag in raw_identifiers:
         if raw_tag in seen:
             continue
         seen.add(raw_tag)
-        if not raw_tag.startswith(prefix):
-            continue
-        version_text = raw_tag.removeprefix(prefix)
-        try:
-            parsed = parse_version(version_text)
-        except SystemExit:
+        parsed = parse_tag_as_version(raw_tag, prefixes)
+        if parsed is None:
             continue
         tags.append((raw_tag, parsed))
     tags.sort(
@@ -95,8 +130,8 @@ def parse_release_identifiers(raw_identifiers: list[str], prefix: str) -> list[t
     return tags
 
 
-def list_git_release_tags(prefix: str) -> list[str]:
-    return run_git(["tag", "--list", f"{prefix}*"]).splitlines()
+def list_git_release_tags() -> list[str]:
+    return run_git(["tag", "--list"]).splitlines()
 
 
 def list_github_release_tags(repo: str | None) -> list[str]:
@@ -120,17 +155,22 @@ def list_github_release_tags(repo: str | None) -> list[str]:
     return [item["tagName"] for item in payload if isinstance(item, dict) and isinstance(item.get("tagName"), str)]
 
 
-def list_release_tags(prefix: str, repo: str | None) -> list[tuple[str, Version]]:
-    raw_identifiers = list_git_release_tags(prefix)
+def list_release_tags(prefixes: list[str], repo: str | None) -> list[tuple[str, Version]]:
+    raw_identifiers = list_git_release_tags()
     raw_identifiers.extend(list_github_release_tags(repo))
-    return parse_release_identifiers(raw_identifiers, prefix)
+    return parse_release_identifiers(raw_identifiers, prefixes)
 
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Compute the next MoltenVK alpha release version for a specific upstream stable release.")
     parser.add_argument("--base-version", required=True, help="Stable upstream version such as 1.2.3.")
-    parser.add_argument("--tag-prefix", default="MoltenVK-v")
+    parser.add_argument(
+        "--tag-prefix",
+        action="append",
+        default=[],
+        help="Additional historical release-tag prefixes to scan alongside plain SemVer tags.",
+    )
     parser.add_argument("--repo", default="", help="Optional GitHub repository in owner/name form to include existing releases in alpha version discovery.")
     args = parser.parse_args()
 
@@ -138,7 +178,7 @@ def main() -> None:
     if base_version.is_alpha:
         fail(f"Base version must be stable, got pre-release: {base_version}")
 
-    release_tags = list_release_tags(args.tag_prefix, args.repo or None)
+    release_tags = list_release_tags(normalize_prefixes([*DEFAULT_TAG_PREFIXES, *args.tag_prefix]), args.repo or None)
     matching_versions = [version for _, version in release_tags if version.core == base_version]
 
     if any(not version.is_alpha for version in matching_versions):

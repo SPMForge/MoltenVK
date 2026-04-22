@@ -39,17 +39,17 @@ if git diff --cached --quiet; then
         fail "Alpha release preparation did not produce any metadata changes."
     fi
 else
-    git commit -m "chore(release): MoltenVK-v${TARGET_VERSION} [skip ci]"
+    git commit -m "chore(release): MoltenVK ${TARGET_VERSION} [skip ci]"
     git push origin HEAD:main
 fi
 
 git fetch origin main
 git checkout origin/main
-git tag -a "MoltenVK-v${TARGET_VERSION}" -m "MoltenVK-v${TARGET_VERSION}"
-git push origin "MoltenVK-v${TARGET_VERSION}"
+git tag -a "${TARGET_VERSION}" -m "${TARGET_VERSION}"
+git push origin "${TARGET_VERSION}"
 
 release_args=(
-    "MoltenVK-v${TARGET_VERSION}"
+    "${TARGET_VERSION}"
     Artifacts/MoltenVK.xcframework.zip
     Artifacts/MoltenVK.xcframework.checksum
     Artifacts/MoltenVK-static.xcframework.zip
@@ -57,7 +57,7 @@ release_args=(
     Artifacts/MoltenVKHeaders.zip
     Artifacts/MoltenVKHeaders.checksum
     --repo "$GITHUB_REPOSITORY"
-    --title "MoltenVK-v${TARGET_VERSION}"
+    --title "${TARGET_VERSION}"
 )
 
 if [[ "$RELEASE_KIND" == "alpha" ]]; then

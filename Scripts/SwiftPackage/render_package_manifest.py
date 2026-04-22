@@ -57,7 +57,7 @@ def render_manifest(
 ) -> str:
     remote_url = (
         f"https://github.com/{release_repository}/releases/download/"
-        f"MoltenVK-v{version}/MoltenVK.xcframework.zip"
+        f"{version}/MoltenVK.xcframework.zip"
     )
 
     rendered_platforms = "\n".join(
@@ -114,7 +114,7 @@ let package = Package(
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Render the MoltenVK Package.swift manifest from release metadata.")
-    parser.add_argument("--version", required=True, help="Package version used in the release tag.")
+    parser.add_argument("--version", required=True, help="Package version and release tag, expressed as plain SemVer.")
     parser.add_argument("--release-repository", required=True, help="GitHub owner/repository that hosts release assets.")
     parser.add_argument("--checksum", required=True, help="SwiftPM checksum for the MoltenVK.xcframework zip.")
     parser.add_argument(
