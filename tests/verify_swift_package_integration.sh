@@ -83,6 +83,7 @@ assert_contains "Scripts/SwiftPackage/publish_release.sh" "gh release create"
 assert_contains "Scripts/SwiftPackage/publish_release.sh" "MoltenVKHeaders.zip"
 assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "framework interface surface"
 assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "missing framework module map"
+assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "non-modular framework include"
 
 assert_missing "Sources/MoltenVK"
 
@@ -99,8 +100,10 @@ assert_file "Artifacts/MoltenVKHeaders.checksum"
 assert_contains "README.md" "independent wrapper repo"
 assert_contains "README.md" "refs/upstream-tags/*"
 assert_contains "README.md" "framework slices carry the public headers and module map internally"
+assert_contains "README.md" "framework-style same-module imports"
 assert_contains "Artifacts/README.md" "MoltenVKHeaders.zip"
 assert_contains "Artifacts/README.md" "framework slices"
+assert_contains "Artifacts/README.md" "<MoltenVK/...>"
 
 assert_missing "SwiftPackage/package.json"
 assert_missing "SwiftPackage/package-lock.json"

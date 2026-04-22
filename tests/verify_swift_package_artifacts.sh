@@ -54,6 +54,10 @@ mkdir -p "$EXTRACTED_DYNAMIC_ROOT"
 ditto -x -k "$DYNAMIC_ZIP" "$EXTRACTED_DYNAMIC_ROOT"
 assert_dir "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework"
 python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework" "${validator_args[@]}"
+if rg -n '^#\s*(include|import)\s+"' "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework" >/dev/null; then
+    echo "quoted framework include directives remain in published MoltenVK.xcframework" >&2
+    exit 1
+fi
 
 python3 "$ROOT_DIR/tests/verify_public_headers.py"
 

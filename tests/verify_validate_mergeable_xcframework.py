@@ -167,6 +167,64 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
         self.assertTrue(any("missing versioned framework headers directory" in issue for issue in issues))
         self.assertTrue(any("missing versioned framework module map" in issue for issue in issues))
 
+    def test_mobile_framework_interface_rejects_quoted_same_framework_include(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path = Path(tmp_dir) / "MoltenVK.framework"
+            framework_path.mkdir()
+            self.add_mobile_framework_interface(framework_path)
+            headers_dir = framework_path / "Headers"
+            (headers_dir / "mvk_datatypes.h").write_text('#include "mvk_vulkan.h"\n', encoding="utf-8")
+
+            issues = validator.framework_interface_issues("ios", framework_path)
+
+        self.assertTrue(any("non-modular framework include" in issue for issue in issues))
+        self.assertTrue(any('"mvk_vulkan.h" instead of <MoltenVK/mvk_vulkan.h>' in issue for issue in issues))
+
+    def test_mobile_framework_interface_rejects_non_framework_angle_include(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path = Path(tmp_dir) / "MoltenVK.framework"
+            framework_path.mkdir()
+            self.add_mobile_framework_interface(framework_path)
+            vulkan_dir = framework_path / "Headers" / "vulkan"
+            vulkan_dir.mkdir()
+            (vulkan_dir / "vulkan.h").write_text('#include <vulkan/vk_platform.h>\n', encoding="utf-8")
+            (vulkan_dir / "vk_platform.h").write_text("#pragma once\n", encoding="utf-8")
+
+            issues = validator.framework_interface_issues("ios", framework_path)
+
+        self.assertTrue(any("non-modular framework include" in issue for issue in issues))
+        self.assertTrue(any("<vulkan/vk_platform.h> instead of <MoltenVK/vulkan/vk_platform.h>" in issue for issue in issues))
+
+    def test_framework_header_include_issues_accept_framework_style_includes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path = Path(tmp_dir) / "MoltenVK.framework"
+            framework_path.mkdir()
+            self.add_mobile_framework_interface(framework_path)
+            headers_dir = framework_path / "Headers"
+            (headers_dir / "mvk_datatypes.h").write_text('#include <MoltenVK/mvk_vulkan.h>\n', encoding="utf-8")
+            vulkan_dir = headers_dir / "vulkan"
+            vulkan_dir.mkdir()
+            (vulkan_dir / "vulkan.h").write_text('#include <MoltenVK/vulkan/vk_platform.h>\n', encoding="utf-8")
+            (vulkan_dir / "vk_platform.h").write_text("#pragma once\n", encoding="utf-8")
+
+            issues = validator.framework_header_include_issues("ios", framework_path, headers_dir)
+
+        self.assertEqual(issues, [])
+
+    def test_mobile_framework_interface_rejects_quoted_local_header_even_if_not_packaged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            framework_path = Path(tmp_dir) / "MoltenVK.framework"
+            framework_path.mkdir()
+            self.add_mobile_framework_interface(framework_path)
+            vulkan_dir = framework_path / "Headers" / "vulkan"
+            vulkan_dir.mkdir()
+            (vulkan_dir / "vulkan.h").write_text('#include "vulkan_sci.h"\n', encoding="utf-8")
+
+            issues = validator.framework_interface_issues("ios", framework_path)
+
+        self.assertTrue(any("non-modular framework include" in issue for issue in issues))
+        self.assertTrue(any('"vulkan_sci.h" instead of <MoltenVK/vulkan/vulkan_sci.h>' in issue for issue in issues))
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(ValidateMergeableXCFrameworkTests)

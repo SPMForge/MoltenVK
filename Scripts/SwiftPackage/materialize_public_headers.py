@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 from pathlib import Path
+from pathlib import PurePosixPath
 
 
 ROOT_PUBLIC_HEADERS = (
@@ -26,6 +28,9 @@ MODULEMAP = """framework module MoltenVK {
   export *
 }
 """
+
+PUBLIC_HEADER_SUFFIXES = {".h", ".hpp", ".cppm"}
+INCLUDE_DIRECTIVE_RE = re.compile(r'^(?P<prefix>\s*#\s*(?:include|import)\s*)(?P<open>[<"])(?P<target>[^>"]+)(?P<close>[>"])')
 
 
 def remove_path(path: Path) -> None:
@@ -49,6 +54,99 @@ def ensure_no_symlinks(root: Path) -> None:
             raise RuntimeError(f"public header staging must not contain symlinks: {path}")
 
 
+def normalize_logical_path(path: PurePosixPath) -> PurePosixPath | None:
+    parts: list[str] = []
+    for part in path.parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not parts:
+                return None
+            parts.pop()
+            continue
+        parts.append(part)
+    return PurePosixPath(*parts)
+
+
+def public_header_index(headers_dir: Path) -> set[PurePosixPath]:
+    index: set[PurePosixPath] = set()
+    for path in headers_dir.rglob("*"):
+        if path.is_file():
+            index.add(PurePosixPath(path.relative_to(headers_dir).as_posix()))
+    return index
+
+
+def rewrite_include_target(
+    include_target: str,
+    delimiter: str,
+    logical_parent: PurePosixPath,
+    public_headers: set[PurePosixPath],
+) -> str | None:
+    if delimiter == "<":
+        if include_target.startswith("MoltenVK/"):
+            return None
+        if include_target.startswith("vulkan/") or include_target.startswith("vk_video/"):
+            return f"MoltenVK/{include_target}"
+        target_path = normalize_logical_path(PurePosixPath(include_target))
+        if target_path is not None and target_path in public_headers:
+            return f"MoltenVK/{target_path.as_posix()}"
+        return None
+
+    if include_target.startswith("vulkan/") or include_target.startswith("vk_video/"):
+        return f"MoltenVK/{include_target}"
+
+    target_path = normalize_logical_path(logical_parent / include_target)
+    if target_path is None:
+        return None
+    if target_path in public_headers:
+        return f"MoltenVK/{target_path.as_posix()}"
+    if target_path.suffix in PUBLIC_HEADER_SUFFIXES and (
+        len(target_path.parts) == 1 or target_path.parts[0] in {"vulkan", "vk_video"}
+    ):
+        return f"MoltenVK/{target_path.as_posix()}"
+    return None
+
+
+def rewrite_framework_header(path: Path, headers_dir: Path, public_headers: set[PurePosixPath]) -> None:
+    logical_parent = PurePosixPath(path.relative_to(headers_dir).parent.as_posix())
+    original_text = path.read_text()
+    rewritten_lines: list[str] = []
+    changed = False
+
+    for line in original_text.splitlines(keepends=True):
+        match = INCLUDE_DIRECTIVE_RE.match(line)
+        if not match:
+            rewritten_lines.append(line)
+            continue
+
+        replacement_target = rewrite_include_target(
+            match.group("target"),
+            match.group("open"),
+            logical_parent,
+            public_headers,
+        )
+        if replacement_target is None:
+            rewritten_lines.append(line)
+            continue
+
+        suffix = line[match.end():]
+        rewritten_lines.append(f'{match.group("prefix")}<{replacement_target}>{suffix}')
+        changed = True
+
+    if changed:
+        path.write_text("".join(rewritten_lines))
+
+
+def rewrite_framework_includes(headers_dir: Path) -> None:
+    public_headers = public_header_index(headers_dir)
+    for path in headers_dir.rglob("*"):
+        if not path.is_file():
+            continue
+        if path.suffix not in PUBLIC_HEADER_SUFFIXES:
+            continue
+        rewrite_framework_header(path, headers_dir, public_headers)
+
+
 def materialize_public_headers(moltenvk_api_dir: Path, vulkan_headers_root: Path, output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     copy_tree(moltenvk_api_dir, output_dir / "MoltenVK")
@@ -66,15 +164,6 @@ def framework_header_root(framework_path: Path) -> tuple[Path, Path, tuple[Path,
     return framework_path / "Headers", framework_path / "Modules", None
 
 
-def rewrite_framework_includes(headers_dir: Path) -> None:
-    for header_name in ROOT_PUBLIC_HEADERS:
-        header_path = headers_dir / header_name
-        text = header_path.read_text()
-        text = text.replace("<vulkan/", "<MoltenVK/vulkan/")
-        text = text.replace("<vk_video/", "<MoltenVK/vk_video/")
-        header_path.write_text(text)
-
-
 def stage_framework_interface(public_headers_root: Path, framework_path: Path) -> None:
     headers_dir, modules_dir, top_level_links = framework_header_root(framework_path)
     headers_dir.mkdir(parents=True, exist_ok=True)
@@ -84,10 +173,6 @@ def stage_framework_interface(public_headers_root: Path, framework_path: Path) -
         shutil.copy2(public_headers_root / "MoltenVK" / header_name, headers_dir / header_name)
     copy_tree(public_headers_root / "vulkan", headers_dir / "vulkan")
     copy_tree(public_headers_root / "vk_video", headers_dir / "vk_video")
-
-    vk_video_link = headers_dir / "vulkan" / "vk_video"
-    remove_path(vk_video_link)
-    vk_video_link.symlink_to("../vk_video", target_is_directory=True)
 
     rewrite_framework_includes(headers_dir)
     (modules_dir / "module.modulemap").write_text(MODULEMAP)

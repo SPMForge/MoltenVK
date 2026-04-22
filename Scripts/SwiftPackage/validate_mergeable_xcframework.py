@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from pathlib import PurePosixPath
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -18,6 +19,9 @@ if str(SCRIPT_DIR) not in sys.path:
 from platform_config import expected_vtool_platforms, load_platform_config
 
 EXPECTED_VTOOL_PLATFORMS = expected_vtool_platforms(load_platform_config())
+PUBLIC_HEADER_SUFFIXES = {".h", ".hpp", ".cppm"}
+INCLUDE_DIRECTIVE_RE = re.compile(r'^(?P<prefix>\s*#\s*(?:include|import)\s*)(?P<open>[<"])(?P<target>[^>"]+)(?P<close>[>"])')
+MAX_FRAMEWORK_INCLUDE_ISSUES = 25
 
 
 def command_output(arguments: list[str]) -> str:
@@ -93,6 +97,96 @@ def macos_framework_layout_issues(framework_path: Path, binary_path: Path) -> li
     return issues
 
 
+def normalize_logical_path(path: PurePosixPath) -> PurePosixPath | None:
+    parts: list[str] = []
+    for part in path.parts:
+        if part in ("", "."):
+            continue
+        if part == "..":
+            if not parts:
+                return None
+            parts.pop()
+            continue
+        parts.append(part)
+    return PurePosixPath(*parts)
+
+
+def framework_public_header_index(headers_dir: Path) -> set[PurePosixPath]:
+    index: set[PurePosixPath] = set()
+    for path in headers_dir.rglob("*"):
+        if path.is_file():
+            index.add(PurePosixPath(path.relative_to(headers_dir).as_posix()))
+    return index
+
+
+def expected_framework_include(
+    include_target: str,
+    delimiter: str,
+    logical_parent: PurePosixPath,
+    public_headers: set[PurePosixPath],
+) -> str | None:
+    if delimiter == "<":
+        if include_target.startswith("MoltenVK/"):
+            return None
+        if include_target.startswith("vulkan/") or include_target.startswith("vk_video/"):
+            return f"MoltenVK/{include_target}"
+        target_path = normalize_logical_path(PurePosixPath(include_target))
+        if target_path is not None and target_path in public_headers:
+            return f"MoltenVK/{target_path.as_posix()}"
+        return None
+
+    if include_target.startswith("vulkan/") or include_target.startswith("vk_video/"):
+        return f"MoltenVK/{include_target}"
+
+    target_path = normalize_logical_path(logical_parent / include_target)
+    if target_path is None:
+        return None
+    if target_path in public_headers:
+        return f"MoltenVK/{target_path.as_posix()}"
+    if target_path.suffix in PUBLIC_HEADER_SUFFIXES and (
+        len(target_path.parts) == 1 or target_path.parts[0] in {"vulkan", "vk_video"}
+    ):
+        return f"MoltenVK/{target_path.as_posix()}"
+    return None
+
+
+def framework_header_include_issues(platform: str, framework_path: Path, headers_dir: Path) -> list[str]:
+    public_headers = framework_public_header_index(headers_dir)
+    issues: list[str] = []
+
+    for path in sorted(headers_dir.rglob("*")):
+        if not path.is_file() or path.suffix not in PUBLIC_HEADER_SUFFIXES:
+            continue
+
+        logical_parent = PurePosixPath(path.relative_to(headers_dir).parent.as_posix())
+        display_path = path.relative_to(framework_path).as_posix()
+
+        for line_number, line in enumerate(path.read_text().splitlines(), start=1):
+            match = INCLUDE_DIRECTIVE_RE.match(line)
+            if not match:
+                continue
+
+            target = match.group("target")
+            expected_target = expected_framework_include(
+                target,
+                match.group("open"),
+                logical_parent,
+                public_headers,
+            )
+            if expected_target is None:
+                continue
+
+            issues.append(
+                f'{platform}: non-modular framework include {display_path}:{line_number} uses '
+                f'{match.group("open")}{target}{match.group("close")} instead of <{expected_target}>'
+            )
+            if len(issues) == MAX_FRAMEWORK_INCLUDE_ISSUES:
+                issues.append(f"{platform}: additional non-modular framework include issues omitted")
+                return issues
+
+    return issues
+
+
 def framework_interface_issues(platform: str, framework_path: Path) -> list[str]:
     issues: list[str] = []
 
@@ -119,6 +213,8 @@ def framework_interface_issues(platform: str, framework_path: Path) -> list[str]
             issues.append(f"{platform}: top-level Modules is not a symlink ({top_level_modules})")
         elif modules_dir.exists() and top_level_modules.resolve() != modules_dir.resolve():
             issues.append(f"{platform}: top-level Modules does not resolve to {modules_dir}")
+        if headers_dir.is_dir():
+            issues.extend(framework_header_include_issues(platform, framework_path, headers_dir))
         return issues
 
     headers_dir = framework_path / "Headers"
@@ -133,6 +229,8 @@ def framework_interface_issues(platform: str, framework_path: Path) -> list[str]
         issues.append(f"{platform}: missing framework module map {modulemap_path}")
     if not (headers_dir / "mvk_vulkan.h").is_file():
         issues.append(f"{platform}: missing framework public header {(headers_dir / 'mvk_vulkan.h')}")
+    if headers_dir.is_dir():
+        issues.extend(framework_header_include_issues(platform, framework_path, headers_dir))
     return issues
 
 

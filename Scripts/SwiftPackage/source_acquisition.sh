@@ -133,11 +133,14 @@ export_upstream_snapshot() {
 overlay_wrapper_files() {
     local workspace_root="$1"
 
-    mkdir -p "$workspace_root/Scripts/SwiftPackage" "$workspace_root/SwiftPackage" "$workspace_root/Sources" "$workspace_root/tests" "$workspace_root/Artifacts"
+    mkdir -p "$workspace_root/Scripts/SwiftPackage" "$workspace_root/SwiftPackage" "$workspace_root/tests" "$workspace_root/Artifacts"
 
     rsync -a "$ROOT_DIR/Scripts/SwiftPackage/" "$workspace_root/Scripts/SwiftPackage/"
     rsync -a "$ROOT_DIR/tests/" "$workspace_root/tests/"
-    rsync -a "$ROOT_DIR/Sources/" "$workspace_root/Sources/"
+    if [[ -d "$ROOT_DIR/Sources" ]]; then
+        mkdir -p "$workspace_root/Sources"
+        rsync -a "$ROOT_DIR/Sources/" "$workspace_root/Sources/"
+    fi
     rsync -a --exclude 'node_modules' "$ROOT_DIR/SwiftPackage/" "$workspace_root/SwiftPackage/"
 
     if [[ -f "$ROOT_DIR/Package.swift" ]]; then

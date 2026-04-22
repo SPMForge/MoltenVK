@@ -42,6 +42,7 @@ Build and release flow
   - exports the requested upstream snapshot
   - builds mergeable dynamic MoltenVK archives
   - stages the public headers and explicit `module.modulemap` inside each `MoltenVK.framework` slice in the final `MoltenVK.xcframework`
+  - rewrites same-framework public header dependencies to framework-style `<MoltenVK/...>` imports before publication
   - materializes `MoltenVKHeaders.zip` as an auxiliary native-consumer headers asset without storing those headers in the wrapper repository
   - assembles XCFramework artifacts
   - computes checksums from the final zip archives
@@ -56,6 +57,7 @@ Public headers contract
 
 - The SwiftPM package no longer relies on a wrapper source target or repo-local `publicHeadersPath`.
 - The importable `MoltenVK` module surface lives inside each `MoltenVK.framework` slice as framework-internal `Headers` plus `Modules/module.modulemap`.
+- Those framework-internal public headers must use framework-style same-module imports such as `<MoltenVK/vulkan/vulkan.h>`, not quoted or relative includes.
 - `Artifacts/MoltenVKHeaders.zip` remains an auxiliary native-consumer asset built from temporary staging, not from checked-in wrapper headers.
 - The wrapper repository must not keep a checked-in `Sources/MoltenVK/include` tree to satisfy SwiftPM import behavior.
 
