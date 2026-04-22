@@ -70,6 +70,8 @@ if [[ "${MVK_SOURCE_MODE:-upstream-snapshot}" == "upstream-snapshot" && "${MVK_S
     workspace_info="$(prepare_upstream_wrapper_workspace "${MVK_UPSTREAM_REF:-}")"
     workspace_root="$(printf '%s\n' "$workspace_info" | sed -n '1p')"
     resolved_upstream_ref="$(printf '%s\n' "$workspace_info" | sed -n '2p')"
+    prepared_workspace_record="${MVK_PREPARED_WORKSPACE_RECORD:-}"
+    sync_checkout_outputs="${MVK_SYNC_WORKSPACE_OUTPUTS_TO_WRAPPER:-0}"
 
     cleanup_upstream_workspace() {
         [[ -n "${workspace_root:-}" ]] && rm -rf "$workspace_root"
@@ -85,8 +87,21 @@ if [[ "${MVK_SOURCE_MODE:-upstream-snapshot}" == "upstream-snapshot" && "${MVK_S
         ./Scripts/SwiftPackage/build_swift_package.sh "$@"
     )
 
-    sync_workspace_outputs_back "$workspace_root" "$ROOT_DIR"
-    log "Built MoltenVK Swift package artifacts from upstream snapshot $resolved_upstream_ref"
+    if [[ -n "$prepared_workspace_record" ]]; then
+        mkdir -p "$(dirname "$prepared_workspace_record")"
+        printf '%s\n' "$workspace_root" > "$prepared_workspace_record"
+        trap - EXIT
+        log "Prepared MoltenVK Swift package workspace from upstream snapshot $resolved_upstream_ref at $workspace_root"
+        exit 0
+    fi
+
+    if [[ "$sync_checkout_outputs" == "1" ]]; then
+        sync_workspace_outputs_back "$workspace_root" "$ROOT_DIR"
+        log "Built MoltenVK Swift package artifacts from upstream snapshot $resolved_upstream_ref"
+        exit 0
+    fi
+
+    fail "Outer build requires MVK_PREPARED_WORKSPACE_RECORD or MVK_SYNC_WORKSPACE_OUTPUTS_TO_WRAPPER=1."
     exit 0
 fi
 

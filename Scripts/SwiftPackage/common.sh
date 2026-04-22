@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT_DIR="${MVK_PACKAGE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 ARTIFACTS_DIR="$ROOT_DIR/Artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
 SWIFT_PACKAGE_DIR="$ROOT_DIR/SwiftPackage"
@@ -17,6 +17,7 @@ MOLTENVK_DYNAMIC_ARTIFACT_NAME="MoltenVK.xcframework"
 MOLTENVK_STATIC_ARTIFACT_NAME="MoltenVK-static.xcframework"
 MOLTENVK_RELEASE_REPOSITORY_FILE="$SWIFT_PACKAGE_DIR/ReleaseRepository.txt"
 MOLTENVK_PACKAGE_VERSION_FILE="$SWIFT_PACKAGE_DIR/PackageVersion.txt"
+MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE="$SWIFT_PACKAGE_DIR/.prepared-workspace-path"
 MOLTENVK_MERGEABLE_VALIDATOR_PATH="${MVK_MERGEABLE_VALIDATOR_PATH:-$ROOT_DIR/Scripts/SwiftPackage/validate_mergeable_xcframework.py}"
 MOLTENVK_PUBLIC_HEADERS_SCRIPT="$ROOT_DIR/Scripts/SwiftPackage/materialize_public_headers.py"
 MOLTENVK_REQUIRED_EXTERNAL_SOURCE_PATHS=(

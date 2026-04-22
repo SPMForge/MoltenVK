@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="${MVK_PACKAGE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 source "$ROOT_DIR/Scripts/SwiftPackage/common.sh"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-consumer.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -50,7 +50,12 @@ run_consumer_builds_for_platform() {
     )
 }
 
-mkdir -p "$TMP_DIR/Sources/SmokeConsumer"
+LOCAL_PACKAGE_ROOT="$TMP_DIR/LocalMoltenVKPackage"
+mkdir -p "$TMP_DIR/Sources/SmokeConsumer" "$LOCAL_PACKAGE_ROOT/Artifacts"
+cp -R "$ROOT_DIR/Artifacts/MoltenVK.xcframework" "$LOCAL_PACKAGE_ROOT/Artifacts/MoltenVK.xcframework"
+python3 "$ROOT_DIR/Scripts/SwiftPackage/render_local_dev_package_manifest.py" \
+    --output "$LOCAL_PACKAGE_ROOT/Package.swift"
+
 SCHEME_NAME="SmokeConsumer-Package"
 PLATFORM_LINES="$(
     python3 - "$ROOT_DIR/Scripts/SwiftPackage/platform_config.py" <<'PY'
@@ -82,7 +87,7 @@ let package = Package(
 ${PLATFORM_LINES}
     ],
     dependencies: [
-        .package(path: "$ROOT_DIR"),
+        .package(path: "$LOCAL_PACKAGE_ROOT"),
     ],
     targets: [
         .target(

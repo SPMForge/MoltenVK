@@ -20,6 +20,10 @@ UPSTREAM_SOURCE_REF_FILE="$ROOT_DIR/SwiftPackage/UpstreamSourceRef.txt"
 [[ -f "$UPSTREAM_SOURCE_REF_FILE" ]] || fail "Missing upstream source ref record: $UPSTREAM_SOURCE_REF_FILE"
 UPSTREAM_SOURCE_REF="$(tr -d '[:space:]' <"$UPSTREAM_SOURCE_REF_FILE")"
 [[ -n "$UPSTREAM_SOURCE_REF" ]] || fail "Upstream source ref record is empty: $UPSTREAM_SOURCE_REF_FILE"
+[[ -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE" ]] || fail "Missing prepared workspace record: $MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
+PREPARED_WORKSPACE_ROOT="$(tr -d '[:space:]' <"$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE")"
+[[ -n "$PREPARED_WORKSPACE_ROOT" ]] || fail "Prepared workspace record is empty: $MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
+[[ -d "$PREPARED_WORKSPACE_ROOT" ]] || fail "Prepared workspace does not exist: $PREPARED_WORKSPACE_ROOT"
 
 cd "$ROOT_DIR"
 git config user.name "github-actions[bot]"
@@ -28,9 +32,9 @@ git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 dynamic_checksum_path="Artifacts/$(dynamic_release_checksum_name "$TARGET_VERSION")"
 static_checksum_path="Artifacts/$(static_release_checksum_name "$TARGET_VERSION")"
 headers_checksum_path="Artifacts/$(headers_release_checksum_name "$TARGET_VERSION")"
-dynamic_zip_path="Artifacts/$(dynamic_release_archive_name "$TARGET_VERSION")"
-static_zip_path="Artifacts/$(static_release_archive_name "$TARGET_VERSION")"
-headers_zip_path="Artifacts/$(headers_release_archive_name "$TARGET_VERSION")"
+dynamic_zip_path="$PREPARED_WORKSPACE_ROOT/Artifacts/$(dynamic_release_archive_name "$TARGET_VERSION")"
+static_zip_path="$PREPARED_WORKSPACE_ROOT/Artifacts/$(static_release_archive_name "$TARGET_VERSION")"
+headers_zip_path="$PREPARED_WORKSPACE_ROOT/Artifacts/$(headers_release_archive_name "$TARGET_VERSION")"
 
 git add \
     Package.swift \
@@ -38,7 +42,7 @@ git add \
     SwiftPackage/ReleaseRepository.txt \
     SwiftPackage/UpstreamRepository.txt \
     SwiftPackage/UpstreamSourceRef.txt
-git add -A Artifacts
+git add Artifacts/*.checksum
 
 if git diff --cached --quiet; then
     if [[ "$RELEASE_KIND" == "alpha" ]]; then
@@ -73,3 +77,5 @@ else
 fi
 
 gh release create "${release_args[@]}"
+rm -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
+rm -rf "$PREPARED_WORKSPACE_ROOT"

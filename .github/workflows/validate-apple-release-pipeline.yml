@@ -146,18 +146,34 @@ jobs:
         run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
 
       - name: Build Swift Package artifacts
+        id: build
         env:
           SKIP_DEPENDENCY_FETCH: "1"
           MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
-        run: ./Scripts/SwiftPackage/build_swift_package.sh
+        run: |
+          rm -f "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path"
+          MVK_PREPARED_WORKSPACE_RECORD="$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path" \
+            ./Scripts/SwiftPackage/build_swift_package.sh
+          workspace_root="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path")"
+          [[ -n "$workspace_root" ]] || {
+            echo "error: prepared workspace path was empty" >&2
+            exit 1
+          }
+          echo "workspace_root=$workspace_root" >> "$GITHUB_OUTPUT"
 
       - name: Validate Swift Package manifest
-        run: swift package dump-package >/dev/null
+        run: |
+          cd "${{ steps.build.outputs.workspace_root }}"
+          swift package dump-package >/dev/null
 
       - name: Verify generated package assets
+        env:
+          MVK_PACKAGE_ROOT: ${{ steps.build.outputs.workspace_root }}
         run: ./tests/verify_swift_package_artifacts.sh
 
       - name: Verify consumer smoke tests
+        env:
+          MVK_PACKAGE_ROOT: ${{ steps.build.outputs.workspace_root }}
         run: ./tests/verify_swift_package_consumer.sh
 
       - name: Show ccache statistics
@@ -170,8 +186,8 @@ jobs:
         with:
           name: moltenvk-validation-${{ github.run_id }}
           path: |
-            Artifacts/*.zip
-            Artifacts/*.checksum
-            Artifacts/MoltenVK.xcframework
-            Artifacts/MoltenVK-static.xcframework
+            ${{ steps.build.outputs.workspace_root }}/Artifacts/*.zip
+            ${{ steps.build.outputs.workspace_root }}/Artifacts/*.checksum
+            ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK.xcframework
+            ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK-static.xcframework
           if-no-files-found: ignore

@@ -185,10 +185,13 @@ jobs:
       - name: Resolve release target
         id: release_target
         env:
+          GH_TOKEN: ${{ github.token }}
           INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
           INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
           RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: |
+          git fetch --force --tags origin
+
           selection_mode="${INPUT_SELECTION_MODE}"
           release_channel="${INPUT_RELEASE_CHANNEL}"
           resolved_upstream_ref="${RESOLVED_UPSTREAM_REF}"

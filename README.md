@@ -6,7 +6,7 @@ This repository is an independent wrapper repo for distributing MoltenVK as a Sw
 Repository architecture
 -----------------------
 
-- The wrapper repo owns the Swift Package contract, release workflows, validation workflows, and generated `Package.swift`.
+- The wrapper repo owns the Swift Package contract, release workflows, validation workflows, and generated remote-only `Package.swift`.
 - Upstream source ownership remains with [KhronosGroup/MoltenVK](https://github.com/KhronosGroup/MoltenVK).
 - CI does not treat this checkout as the source of truth for MoltenVK source code.
 - CI fetches upstream tags into `refs/upstream-tags/*`, exports the requested upstream snapshot, and builds release artifacts from that exported snapshot.
@@ -58,7 +58,7 @@ Build and release flow
 Public headers contract
 -----------------------
 
-- The SwiftPM package no longer relies on a wrapper source target or repo-local `publicHeadersPath`.
+- The SwiftPM package no longer relies on a wrapper source target, repo-local `publicHeadersPath`, or checkout-state local artifact fallback in the committed `Package.swift`.
 - The importable `MoltenVK` module surface lives inside each `MoltenVK.framework` slice as framework-internal `Headers` plus `Modules/module.modulemap`.
 - Those framework-internal public headers must use framework-style same-module imports such as `<MoltenVK/vulkan/vulkan.h>`, not quoted or relative includes.
 - `Artifacts/MoltenVKHeaders-<version>.zip` remains an auxiliary native-consumer asset built from temporary staging, not from checked-in wrapper headers.
@@ -84,3 +84,5 @@ Consumer note
 When integrating this package into a Release configuration that enables merged binaries, set `MERGED_BINARY_TYPE=automatic`.
 
 For package consumers, the framework slices carry the public headers and module map internally, so the SwiftPM import surface is defined by the distributed `MoltenVK.xcframework`, not by wrapper-repo checkout headers.
+
+For local smoke tests or operator-only verification against a freshly built checkout artifact, use the explicit local-only manifest helper `Scripts/SwiftPackage/render_local_dev_package_manifest.py` instead of changing the committed `Package.swift`.

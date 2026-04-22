@@ -3,6 +3,7 @@
 /Artifacts/*
 !/Artifacts/README.md
 !/Artifacts/*.checksum
+/SwiftPackage/.prepared-workspace-path
 
 # MoltenVK dependencies
 /External
