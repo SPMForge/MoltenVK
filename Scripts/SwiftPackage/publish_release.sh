@@ -38,17 +38,18 @@ release_exists() {
 }
 
 ensure_release_tag() {
-    git fetch --force --tags origin
+    git fetch --force origin \
+        "refs/heads/main:refs/remotes/origin/main" \
+        "refs/tags/*:refs/tags/*"
     if git ls-remote --exit-code --tags origin "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1; then
         return 0
     fi
 
     if ! git rev-parse -q --verify "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1; then
-        git checkout origin/main
-        git tag -a "${TARGET_VERSION}" -m "${TARGET_VERSION}"
+        git tag -a "${TARGET_VERSION}" "refs/remotes/origin/main" -m "${TARGET_VERSION}"
     fi
 
-    git push origin "refs/tags/${TARGET_VERSION}"
+    git push origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
 }
 
 normalize_release_metadata() {
@@ -95,7 +96,7 @@ git add \
     SwiftPackage/ReleaseRepository.txt \
     SwiftPackage/UpstreamRepository.txt \
     SwiftPackage/UpstreamSourceRef.txt
-git add Artifacts/*.checksum
+git add -A Artifacts
 
 if git diff --cached --quiet; then
     :

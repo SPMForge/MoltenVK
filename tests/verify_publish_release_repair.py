@@ -144,14 +144,14 @@ class PublishReleaseRepairTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("git add -A Artifacts", commands)
         self.assertIn("gh release edit 1.2.3-alpha.4", commands)
         self.assertIn("--prerelease", commands)
         self.assertIn("--latest=false", commands)
         self.assertIn("gh release upload 1.2.3-alpha.4", commands)
         self.assertIn("--clobber", commands)
         self.assertNotIn("gh release create 1.2.3-alpha.4", commands)
-        self.assertNotIn("git checkout origin/main", commands)
-        self.assertNotIn("git tag -a 1.2.3-alpha.4", commands)
+        self.assertNotIn("git tag -a 1.2.3-alpha.4 refs/remotes/origin/main", commands)
 
     def test_stable_missing_release_creates_and_uploads_assets(self) -> None:
         completed, temp_root, command_log = self.run_publish(
@@ -164,9 +164,10 @@ class PublishReleaseRepairTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         commands = command_log.read_text(encoding="utf-8")
-        self.assertIn("git checkout origin/main", commands)
-        self.assertIn("git tag -a 1.2.3 -m 1.2.3", commands)
-        self.assertIn("git push origin refs/tags/1.2.3", commands)
+        self.assertIn("git add -A Artifacts", commands)
+        self.assertIn("git fetch --force origin refs/heads/main:refs/remotes/origin/main refs/tags/*:refs/tags/*", commands)
+        self.assertIn("git tag -a 1.2.3 refs/remotes/origin/main -m 1.2.3", commands)
+        self.assertIn("git push origin refs/tags/1.2.3:refs/tags/1.2.3", commands)
         self.assertIn("gh release create 1.2.3", commands)
         self.assertIn("--verify-tag", commands)
         self.assertIn("gh release upload 1.2.3", commands)
