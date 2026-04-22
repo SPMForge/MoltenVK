@@ -27,6 +27,18 @@ archive_basename_for_platform() {
         ios-simulator)
             printf 'ios-simulator\n'
             ;;
+        tvos)
+            printf 'tvos\n'
+            ;;
+        tvos-simulator)
+            printf 'tvos-simulator\n'
+            ;;
+        xros)
+            printf 'xros\n'
+            ;;
+        xros-simulator)
+            printf 'xros-simulator\n'
+            ;;
         *)
             fail "Unsupported platform id in build_swift_package.sh archive mapping: $1"
             ;;
@@ -40,6 +52,12 @@ packaging_scheme_for_platform() {
             ;;
         ios|ios-simulator)
             printf 'MoltenVK Package (iOS only)\n'
+            ;;
+        tvos|tvos-simulator)
+            printf 'MoltenVK Package (tvOS only)\n'
+            ;;
+        xros|xros-simulator)
+            printf 'MoltenVK Package (visionOS only)\n'
             ;;
         *)
             fail "Unsupported platform id in build_swift_package.sh packaging scheme mapping: $1"

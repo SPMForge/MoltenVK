@@ -102,10 +102,14 @@ def bash_array(values: list[str]) -> str:
 def render_shell(config: dict) -> str:
     deployment_targets = config["deployment_targets"]
     build_matrix = config["build_matrix"]
+    deployment_target_families = list(deployment_targets.keys())
 
     lines = [
         f"MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['ios']['version'])}",
         f"MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET={shlex.quote(deployment_targets['macos']['version'])}",
+        f"MOLTENVK_DEPLOYMENT_TARGET_FAMILIES={bash_array(deployment_target_families)}",
+        f"MOLTENVK_DEPLOYMENT_TARGET_SWIFTPM_PLATFORMS={bash_array([deployment_targets[family]['swiftpm_platform'] for family in deployment_target_families])}",
+        f"MOLTENVK_DEPLOYMENT_TARGET_VERSIONS={bash_array([deployment_targets[family]['version'] for family in deployment_target_families])}",
         f"MOLTENVK_PLATFORM_IDS={bash_array([entry['id'] for entry in build_matrix])}",
         f"MOLTENVK_PLATFORM_FAMILIES={bash_array([entry['family'] for entry in build_matrix])}",
         f"MOLTENVK_PLATFORM_BUILD_FLAGS={bash_array([entry['build_flag'] for entry in build_matrix])}",

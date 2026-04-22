@@ -46,6 +46,7 @@ for platform_id in "${REQUESTED_PLATFORM_IDS[@]}"; do
     scheme="$(dynamic_scheme_for_platform "$platform_id" "$MOLTENVK_PROJECT")"
     expected_token="$(showdestinations_token_for_platform "$platform_id")"
     destination_output="$(xcodebuild -showdestinations -project "$MOLTENVK_PROJECT" -scheme "$scheme")"
-    grep -Fq "platform:${expected_token}" <<<"$destination_output" || fail "Scheme $scheme does not advertise destination platform:${expected_token}"
+    grep -F "platform:${expected_token}" <<<"$destination_output" | grep -Fv "error:" >/dev/null \
+        || fail "Scheme $scheme does not advertise an eligible destination platform:${expected_token}"
     log "Verified destination platform:${expected_token} for scheme $scheme"
 done

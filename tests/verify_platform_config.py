@@ -26,14 +26,14 @@ class PlatformConfigTests(unittest.TestCase):
         config = platform_config.load_platform_config()
         self.assertEqual(
             [entry["id"] for entry in config["build_matrix"]],
-            ["macos", "ios", "ios-simulator"],
+            ["macos", "ios", "ios-simulator", "tvos", "tvos-simulator", "xros", "xros-simulator"],
         )
 
     def test_manifest_platform_entries_follow_deployment_targets(self) -> None:
         config = platform_config.load_platform_config()
         self.assertEqual(
             platform_config.manifest_platform_entries(config),
-            [("iOS", "14"), ("macOS", "11")],
+            [("iOS", "14"), ("macOS", "11"), ("tvOS", "14"), ("visionOS", "1")],
         )
 
     def test_expected_vtool_platforms_follow_platform_config(self) -> None:
@@ -44,6 +44,10 @@ class PlatformConfigTests(unittest.TestCase):
                 "macos": "MACOS",
                 "ios": "IOS",
                 "ios-simulator": "IOSSIMULATOR",
+                "tvos": "TVOS",
+                "tvos-simulator": "TVOSSIMULATOR",
+                "xros": "VISIONOS",
+                "xros-simulator": "VISIONOSSIMULATOR",
             },
         )
 

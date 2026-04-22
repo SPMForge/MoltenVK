@@ -84,6 +84,10 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
         self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["macos"], "MACOS")
         self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["ios"], "IOS")
         self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["ios-simulator"], "IOSSIMULATOR")
+        self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["tvos"], "TVOS")
+        self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["tvos-simulator"], "TVOSSIMULATOR")
+        self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["xros"], "VISIONOS")
+        self.assertEqual(validator.EXPECTED_VTOOL_PLATFORMS["xros-simulator"], "VISIONOSSIMULATOR")
 
     def test_entry_issues_fails_when_vtool_platform_mismatches(self) -> None:
         issues = validator.entry_issues(

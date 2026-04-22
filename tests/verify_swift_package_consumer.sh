@@ -52,6 +52,24 @@ run_consumer_builds_for_platform() {
 
 mkdir -p "$TMP_DIR/Sources/SmokeConsumer"
 SCHEME_NAME="SmokeConsumer-Package"
+PLATFORM_LINES="$(
+    python3 - "$ROOT_DIR/Scripts/SwiftPackage/platform_config.py" <<'PY'
+import importlib.util
+import sys
+from pathlib import Path
+
+script_path = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("platform_config", script_path)
+if spec is None or spec.loader is None:
+    raise RuntimeError(f"Unable to load platform_config module from {script_path}")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+config = module.load_platform_config()
+for swiftpm_platform, deployment_target in module.manifest_platform_entries(config):
+    print(f"        .{swiftpm_platform}(.v{deployment_target}),")
+PY
+)"
 
 cat >"$TMP_DIR/Package.swift" <<EOF
 // swift-tools-version: 6.0
@@ -61,8 +79,7 @@ import PackageDescription
 let package = Package(
     name: "SmokeConsumer",
     platforms: [
-        .iOS(.v${MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET}),
-        .macOS(.v${MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET}),
+${PLATFORM_LINES}
     ],
     dependencies: [
         .package(path: "$ROOT_DIR"),

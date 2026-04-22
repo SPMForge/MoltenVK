@@ -99,6 +99,30 @@ platform_family_for_id() {
     printf '%s\n' "${MOLTENVK_PLATFORM_FAMILIES[$index]}"
 }
 
+deployment_target_index_by_family() {
+    local requested_family="$1"
+    local index
+    for index in "${!MOLTENVK_DEPLOYMENT_TARGET_FAMILIES[@]}"; do
+        if [[ "${MOLTENVK_DEPLOYMENT_TARGET_FAMILIES[$index]}" == "$requested_family" ]]; then
+            printf '%s\n' "$index"
+            return 0
+        fi
+    done
+    return 1
+}
+
+swiftpm_platform_name_for_family() {
+    local index
+    index="$(deployment_target_index_by_family "$1")" || fail "Unknown deployment target family in platform config: $1"
+    printf '%s\n' "${MOLTENVK_DEPLOYMENT_TARGET_SWIFTPM_PLATFORMS[$index]}"
+}
+
+deployment_target_version_for_family() {
+    local index
+    index="$(deployment_target_index_by_family "$1")" || fail "Unknown deployment target family in platform config: $1"
+    printf '%s\n' "${MOLTENVK_DEPLOYMENT_TARGET_VERSIONS[$index]}"
+}
+
 platform_consumer_test_enabled_for_id() {
     local index
     index="$(platform_index_by_id "$1")" || fail "Unknown platform id in platform config: $1"
@@ -314,6 +338,12 @@ dynamic_scheme_for_platform() {
         ios|ios-simulator)
             scheme_base="MoltenVK-iOS"
             ;;
+        tvos|tvos-simulator)
+            scheme_base="MoltenVK-tvOS"
+            ;;
+        xros|xros-simulator)
+            scheme_base="MoltenVK-xrOS"
+            ;;
         *)
             fail "Unsupported platform id in dynamic scheme mapping: $platform_id"
             ;;
@@ -370,6 +400,32 @@ pbxproj_path.write_text(text)
 PY
 }
 
+patch_tvos_mergeable_linker_mode() {
+    local pbxproj_path="$1"
+
+    python3 - "$pbxproj_path" <<'PY'
+from pathlib import Path
+import sys
+
+pbxproj_path = Path(sys.argv[1])
+text = pbxproj_path.read_text()
+
+# Upstream tvOS dynamic targets still opt into the legacy classic linker.
+# Mergeable archives require the modern linker because Xcode injects -make_mergeable.
+legacy_flags = 'OTHER_LDFLAGS = (\n\t\t\t\t\t"-ld_classic",\n\t\t\t\t\t"-all_load",\n\t\t\t\t\t"-w",\n\t\t\t\t);'
+mergeable_flags = 'OTHER_LDFLAGS = (\n\t\t\t\t\t"-all_load",\n\t\t\t\t\t"-w",\n\t\t\t\t);'
+
+legacy_count = text.count(legacy_flags)
+if legacy_count != 2:
+    raise SystemExit(
+        f"Expected 2 tvOS dynamic classic-linker flag blocks in {pbxproj_path}, found {legacy_count}"
+    )
+
+text = text.replace(legacy_flags, mergeable_flags, 2)
+pbxproj_path.write_text(text)
+PY
+}
+
 prepare_patched_swift_package_workspace() {
     local workspace_root
     workspace_root="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-swift-package.XXXXXX")"
@@ -402,6 +458,7 @@ shutil.copytree(
 PY
 
     patch_macos_shader_converter_dependency "$workspace_root/MoltenVK/MoltenVK.xcodeproj/project.pbxproj"
+    patch_tvos_mergeable_linker_mode "$workspace_root/MoltenVK/MoltenVK.xcodeproj/project.pbxproj"
     printf '%s\n' "$workspace_root"
 }
 

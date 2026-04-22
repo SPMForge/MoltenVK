@@ -7,6 +7,14 @@
     "macos": {
       "swiftpm_platform": "macOS",
       "version": "11"
+    },
+    "tvos": {
+      "swiftpm_platform": "tvOS",
+      "version": "14"
+    },
+    "visionos": {
+      "swiftpm_platform": "visionOS",
+      "version": "1"
     }
   },
   "build_matrix": [
@@ -38,6 +46,46 @@
       "sdk": "iphonesimulator",
       "validator_key": "ios-simulator",
       "vtool_platform": "IOSSIMULATOR",
+      "consumer_test": true
+    },
+    {
+      "id": "tvos",
+      "family": "tvos",
+      "build_flag": "--tvos",
+      "destination": "generic/platform=tvOS",
+      "sdk": "appletvos",
+      "validator_key": "tvos",
+      "vtool_platform": "TVOS",
+      "consumer_test": false
+    },
+    {
+      "id": "tvos-simulator",
+      "family": "tvos",
+      "build_flag": "--tvossim",
+      "destination": "generic/platform=tvOS Simulator",
+      "sdk": "appletvsimulator",
+      "validator_key": "tvos-simulator",
+      "vtool_platform": "TVOSSIMULATOR",
+      "consumer_test": true
+    },
+    {
+      "id": "xros",
+      "family": "visionos",
+      "build_flag": "--visionos",
+      "destination": "generic/platform=visionOS",
+      "sdk": "xros",
+      "validator_key": "xros",
+      "vtool_platform": "VISIONOS",
+      "consumer_test": false
+    },
+    {
+      "id": "xros-simulator",
+      "family": "visionos",
+      "build_flag": "--visionossim",
+      "destination": "generic/platform=visionOS Simulator",
+      "sdk": "xrsimulator",
+      "validator_key": "xros-simulator",
+      "vtool_platform": "VISIONOSSIMULATOR",
       "consumer_test": true
     }
   ]

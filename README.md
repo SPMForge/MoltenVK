@@ -18,6 +18,7 @@ Package contract
 - Package name: `MoltenVK`
 - Product name: `MoltenVK`
 - Binary target: `MoltenVK`
+- Supported SwiftPM platform families: `iOS`, `macOS`, `tvOS`, and `visionOS`
 - Release tag format: `MoltenVK-v<version>`
 - Primary SwiftPM asset: `MoltenVK.xcframework.zip`
 - Additional release assets:
@@ -40,6 +41,7 @@ Build and release flow
   - exports the requested upstream snapshot and prewarms external dependencies there
 - `Scripts/SwiftPackage/build_swift_package.sh`
   - exports the requested upstream snapshot
+  - patches the exported `MoltenVK.xcodeproj` so tvOS mergeable framework archives do not inherit the upstream `-ld_classic` linker mode
   - builds mergeable dynamic MoltenVK archives
   - stages the public headers and explicit `module.modulemap` inside each `MoltenVK.framework` slice in the final `MoltenVK.xcframework`
   - rewrites same-framework public header dependencies to framework-style `<MoltenVK/...>` imports before publication
