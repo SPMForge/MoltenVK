@@ -87,7 +87,7 @@ let package = Package(
 ${PLATFORM_LINES}
     ],
     dependencies: [
-        .package(path: "$LOCAL_PACKAGE_ROOT"),
+        .package(name: "MoltenVK", path: "$LOCAL_PACKAGE_ROOT"),
     ],
     targets: [
         .target(

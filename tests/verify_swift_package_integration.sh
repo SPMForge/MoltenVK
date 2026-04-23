@@ -207,6 +207,7 @@ assert_executable "tests/verify_swift_package_artifacts.sh"
 assert_executable "tests/verify_swift_package_consumer.sh"
 assert_executable "tests/verify_validate_mergeable_xcframework.py"
 assert_executable "tests/verify_publish_release_repair.py"
+assert_contains "tests/verify_swift_package_consumer.sh" '.package(name: "MoltenVK", path: "$LOCAL_PACKAGE_ROOT")'
 assert_contains "tests/verify_swift_package_consumer.sh" "MERGED_BINARY_TYPE=automatic"
 assert_contains "tests/verify_swift_package_consumer.sh" "consumer_test_platform_ids"
 assert_contains "tests/verify_swift_package_artifacts.sh" "ditto -x -k"
