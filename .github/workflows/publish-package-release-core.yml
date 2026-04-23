@@ -21,8 +21,7 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 
 jobs:
   verify:
@@ -34,10 +33,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -74,12 +73,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -170,12 +169,12 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
@@ -245,7 +244,7 @@ jobs:
           echo "compiler_cache_inputs_hash=${compiler_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
 
       - name: Cache compiler results
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ccache
           key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
@@ -255,7 +254,7 @@ jobs:
 
       - name: Cache MoltenVK external dependencies
         id: cache-dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             External/cereal
@@ -329,7 +328,7 @@ jobs:
           cp "$WORKSPACE_ROOT/Artifacts/"*.zip "$payload_root/release-assets/"
 
       - name: Upload release payload
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: moltenvk-release-payload-${{ github.run_id }}
           overwrite: true
@@ -351,18 +350,18 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
       - name: Download release payload
         if: needs.resolve.outputs.publication_mode != 'skip'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: moltenvk-release-payload-${{ github.run_id }}
           path: ${{ runner.temp }}/release-payload
