@@ -279,16 +279,28 @@ def resolve_release_plan(selection_mode: str, release_channel: str, upstream_ref
         return inspect_target_state(repo, upstream_ref, target_version, release_channel, set(remote_tag_names))
 
     if stable_versions:
-        return ReleasePlan(
-            upstream_ref=upstream_ref,
-            target_version=str(base_version),
-            publication_mode="skip",
-            release_action="skip",
-            remote_tag_exists=True,
-            release_exists=True,
-            metadata_needs_repair=False,
-            missing_assets=[],
-            reason=f"stable package release already exists for {base_version}",
+        stable_plan = inspect_target_state(
+            repo,
+            upstream_ref,
+            str(base_version),
+            "stable",
+            set(remote_tag_names),
+        )
+        if stable_plan.publication_mode == "skip":
+            return ReleasePlan(
+                upstream_ref=stable_plan.upstream_ref,
+                target_version=stable_plan.target_version,
+                publication_mode="skip",
+                release_action="skip",
+                remote_tag_exists=stable_plan.remote_tag_exists,
+                release_exists=stable_plan.release_exists,
+                metadata_needs_repair=stable_plan.metadata_needs_repair,
+                missing_assets=stable_plan.missing_assets,
+                reason=f"stable package release already exists for {base_version}",
+            )
+        fail(
+            f"Stable package release {base_version} is incomplete "
+            f"({stable_plan.reason}); repair it through the stable release path before publishing alpha."
         )
 
     alpha_versions = [version for version in matching_versions if version.is_alpha]

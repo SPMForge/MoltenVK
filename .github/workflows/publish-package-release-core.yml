@@ -311,7 +311,8 @@ jobs:
       - name: Upload release payload
         uses: actions/upload-artifact@v4
         with:
-          name: moltenvk-release-payload
+          name: moltenvk-release-payload-${{ github.run_id }}
+          overwrite: true
           path: ${{ runner.temp }}/release-payload
           if-no-files-found: error
 
@@ -340,7 +341,7 @@ jobs:
       - name: Download release payload
         uses: actions/download-artifact@v4
         with:
-          name: moltenvk-release-payload
+          name: moltenvk-release-payload-${{ github.run_id }}
           path: ${{ runner.temp }}/release-payload
 
       - name: Restore generated release payload

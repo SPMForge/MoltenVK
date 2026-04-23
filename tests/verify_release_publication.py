@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import shutil
 import sys
 import tempfile
@@ -144,6 +146,45 @@ class ReleasePublicationTests(unittest.TestCase):
         self.assertEqual(plan.publication_mode, "skip")
         self.assertEqual(plan.release_action, "skip")
         self.assertEqual(plan.missing_assets, [])
+
+    def test_alpha_fails_loudly_when_matching_stable_release_is_broken(self) -> None:
+        version = "1.2.3"
+        original_remote_tags = module.list_remote_tag_names
+        original_release_tags = module.list_github_release_tags
+        original_fetch_release = module.fetch_github_release
+        original_latest_tag = module.fetch_latest_release_tag
+        try:
+            module.list_remote_tag_names = lambda: [version]
+            module.list_github_release_tags = lambda repo: [version]
+            module.fetch_github_release = lambda repo, tag: self.stub_release(
+                tag=tag,
+                assets={
+                    f"MoltenVK-{version}.xcframework.zip",
+                    f"MoltenVK-{version}.xcframework.checksum",
+                },
+                is_prerelease=False,
+            )
+            module.fetch_latest_release_tag = lambda repo: None
+
+            stderr = io.StringIO()
+            with contextlib.redirect_stderr(stderr):
+                with self.assertRaises(SystemExit):
+                    module.resolve_release_plan(
+                        selection_mode="latest",
+                        release_channel="alpha",
+                        upstream_ref="v1.2.3",
+                        repo="SPMForge/MoltenVK",
+                    )
+        finally:
+            module.list_remote_tag_names = original_remote_tags
+            module.list_github_release_tags = original_release_tags
+            module.fetch_github_release = original_fetch_release
+            module.fetch_latest_release_tag = original_latest_tag
+
+        self.assertIn(
+            "repair it through the stable release path before publishing alpha",
+            stderr.getvalue(),
+        )
 
     def test_alpha_resolution_fails_loudly_when_github_queries_fail(self) -> None:
         original_release_tags = module.list_github_release_tags

@@ -166,6 +166,9 @@ assert_contains ".github/workflows/publish-package-release-core.yml" "Prepare re
 assert_contains ".github/workflows/publish-package-release-core.yml" "./Scripts/SwiftPackage/prepare_alpha_release.sh"
 assert_contains ".github/workflows/publish-package-release-core.yml" "./Scripts/SwiftPackage/publish_release.sh"
 assert_contains ".github/workflows/publish-package-release-core.yml" "./Scripts/SwiftPackage/release_publication.py"
+assert_contains ".github/workflows/publish-package-release-core.yml" "moltenvk-release-payload-\${{ github.run_id }}"
+assert_contains ".github/workflows/publish-package-release-core.yml" "overwrite: true"
+assert_not_contains ".github/workflows/publish-package-release-core.yml" "moltenvk-release-payload-\${{ github.run_id }}-\${{ github.run_attempt }}"
 assert_not_contains ".github/workflows/publish-package-release-core.yml" "Verify release tag and release do not already exist"
 
 assert_file ".github/workflows/publish-latest-upstream-alpha.yml"
