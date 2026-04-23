@@ -94,6 +94,20 @@ class PlatformConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "major.minor"):
                 platform_config.load_platform_config(config_path)
 
+    def test_render_shell_does_not_export_cross_platform_deployment_target_env(self) -> None:
+        config = platform_config.load_platform_config()
+        rendered = platform_config.render_shell(config)
+
+        self.assertIn("export MOLTENVK_PACKAGE_IOS_DEPLOYMENT_TARGET=14.0", rendered)
+        self.assertIn("export MOLTENVK_PACKAGE_MACOS_DEPLOYMENT_TARGET=11.0", rendered)
+        self.assertIn("export MOLTENVK_PACKAGE_TVOS_DEPLOYMENT_TARGET=14.0", rendered)
+        self.assertIn("export MOLTENVK_PACKAGE_VISIONOS_DEPLOYMENT_TARGET=1.0", rendered)
+
+        self.assertNotIn("export IPHONEOS_DEPLOYMENT_TARGET=", rendered)
+        self.assertNotIn("export MACOSX_DEPLOYMENT_TARGET=", rendered)
+        self.assertNotIn("export TVOS_DEPLOYMENT_TARGET=", rendered)
+        self.assertNotIn("export XROS_DEPLOYMENT_TARGET=", rendered)
+
 
 if __name__ == "__main__":
     suite = unittest.defaultTestLoader.loadTestsFromTestCase(PlatformConfigTests)
