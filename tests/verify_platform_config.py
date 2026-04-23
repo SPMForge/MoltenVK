@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -33,7 +34,7 @@ class PlatformConfigTests(unittest.TestCase):
         config = platform_config.load_platform_config()
         self.assertEqual(
             platform_config.manifest_platform_entries(config),
-            [("iOS", "14"), ("macOS", "11"), ("tvOS", "14"), ("visionOS", "1")],
+            [("iOS", "14.0"), ("macOS", "11.0"), ("tvOS", "14.0"), ("visionOS", "1.0")],
         )
 
     def test_expected_vtool_platforms_follow_platform_config(self) -> None:
@@ -56,12 +57,42 @@ class PlatformConfigTests(unittest.TestCase):
         self.assertEqual(
             platform_config.deployment_target_build_settings(config),
             [
-                ("IPHONEOS_DEPLOYMENT_TARGET", "14"),
-                ("MACOSX_DEPLOYMENT_TARGET", "11"),
-                ("TVOS_DEPLOYMENT_TARGET", "14"),
-                ("XROS_DEPLOYMENT_TARGET", "1"),
+                ("IPHONEOS_DEPLOYMENT_TARGET", "14.0"),
+                ("MACOSX_DEPLOYMENT_TARGET", "11.0"),
+                ("TVOS_DEPLOYMENT_TARGET", "14.0"),
+                ("XROS_DEPLOYMENT_TARGET", "1.0"),
             ],
         )
+
+    def test_platform_config_rejects_major_only_deployment_targets(self) -> None:
+        invalid_config = """\
+{
+  "deployment_targets": {
+    "ios": {
+      "swiftpm_platform": "iOS",
+      "version": "14",
+      "xcodebuild_setting": "IPHONEOS_DEPLOYMENT_TARGET"
+    }
+  },
+  "build_matrix": [
+    {
+      "id": "ios",
+      "family": "ios",
+      "build_flag": "--ios",
+      "destination": "generic/platform=iOS",
+      "sdk": "iphoneos",
+      "validator_key": "ios",
+      "vtool_platform": "IOS",
+      "consumer_test": true
+    }
+  ]
+}
+"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            config_path = Path(tmp_dir) / "platforms.json"
+            config_path.write_text(invalid_config, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "major.minor"):
+                platform_config.load_platform_config(config_path)
 
 
 if __name__ == "__main__":

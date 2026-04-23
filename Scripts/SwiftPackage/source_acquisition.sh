@@ -161,6 +161,23 @@ seed_dependency_cache_into_workspace() {
     done
 }
 
+patch_upstream_wrapper_workspace() {
+    local workspace_root="$1"
+    local resolved_ref="$2"
+    local upstream_commit
+
+    command -v python3 >/dev/null 2>&1 || sa_fail "Missing required command: python3"
+
+    upstream_commit="$(git -C "$ROOT_DIR" rev-parse "${MOLTENVK_UPSTREAM_TAG_NAMESPACE}/${resolved_ref}^{commit}")" \
+        || sa_fail "Unable to resolve upstream commit for ${resolved_ref}"
+
+    python3 "$ROOT_DIR/Scripts/SwiftPackage/prepare_upstream_workspace.py" \
+        --workspace-root "$workspace_root" \
+        --upstream-commit "$upstream_commit" \
+        --platform-config "$ROOT_DIR/SwiftPackage/platforms.json" \
+        || sa_fail "Unable to patch prepared upstream workspace at $workspace_root"
+}
+
 prepare_upstream_wrapper_workspace() {
     local requested_ref="${1:-}"
     local resolved_ref
@@ -173,6 +190,7 @@ prepare_upstream_wrapper_workspace() {
     overlay_wrapper_files "$workspace_root"
     seed_dependency_cache_into_workspace "$workspace_root"
     printf '%s\n' "$resolved_ref" > "$workspace_root/SwiftPackage/UpstreamSourceRef.txt"
+    patch_upstream_wrapper_workspace "$workspace_root" "$resolved_ref"
 
     printf '%s\n%s\n' "$workspace_root" "$resolved_ref"
 }

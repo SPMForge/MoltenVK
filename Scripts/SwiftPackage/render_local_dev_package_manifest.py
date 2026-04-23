@@ -15,7 +15,7 @@ from platform_config import DEFAULT_PLATFORM_CONFIG_PATH, load_platform_config, 
 
 def render_manifest(artifact_relative_path: str, platform_entries: list[tuple[str, str]]) -> str:
     rendered_platforms = "\n".join(
-        f"        .{swiftpm_platform}(.v{deployment_target}),"
+        f'        .{swiftpm_platform}("{deployment_target}"),'
         for swiftpm_platform, deployment_target in platform_entries
     )
 

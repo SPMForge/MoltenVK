@@ -16,16 +16,36 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from platform_config import expected_vtool_platforms, load_platform_config
+from platform_config import expected_validator_deployment_targets, expected_vtool_platforms, load_platform_config
 
 EXPECTED_VTOOL_PLATFORMS = expected_vtool_platforms(load_platform_config())
+EXPECTED_MINIMUM_DEPLOYMENT_TARGETS = expected_validator_deployment_targets(load_platform_config())
 PUBLIC_HEADER_SUFFIXES = {".h", ".hpp", ".cppm"}
 INCLUDE_DIRECTIVE_RE = re.compile(r'^(?P<prefix>\s*#\s*(?:include|import)\s*)(?P<open>[<"])(?P<target>[^>"]+)(?P<close>[>"])')
+VTOOL_BUILD_VERSION_RE = re.compile(r"platform\s+([A-Z0-9_]+)\s+minos\s+([0-9.]+)")
 MAX_FRAMEWORK_INCLUDE_ISSUES = 25
 
 
 def command_output(arguments: list[str]) -> str:
     return subprocess.check_output(arguments, text=True).strip()
+
+
+def canonical_deployment_target(value: str) -> str:
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+){0,2}", value):
+        raise ValueError(f"Unsupported deployment target format in vtool output: {value}")
+    parts = [int(part) for part in value.split(".")]
+    while len(parts) > 2 and parts[-1] == 0:
+        parts.pop()
+    if len(parts) == 1:
+        parts.append(0)
+    return ".".join(str(part) for part in parts)
+
+
+def parse_vtool_build_versions(output: str) -> list[dict[str, str]]:
+    return [
+        {"platform": platform, "minos": canonical_deployment_target(minos)}
+        for platform, minos in VTOOL_BUILD_VERSION_RE.findall(output)
+    ]
 
 
 def platform_key(entry: dict[str, object]) -> str:
@@ -251,6 +271,7 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
 
     platform = platform_key(entry)
     expected_vtool_platform = EXPECTED_VTOOL_PLATFORMS.get(platform)
+    expected_minimum_deployment_target = EXPECTED_MINIMUM_DEPLOYMENT_TARGETS.get(platform)
 
     result = {
         "platform": platform,
@@ -261,6 +282,7 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
         "binary_path": str(binary_path) if binary_path is not None else None,
         "binary_exists": bool(binary_path and binary_path.exists()),
         "expected_vtool_platform": expected_vtool_platform,
+        "expected_minimum_deployment_target": expected_minimum_deployment_target,
     }
 
     if binary_path is None or not binary_path.exists():
@@ -277,7 +299,8 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
 
     try:
         output = command_output(["xcrun", "vtool", "-show-build", str(binary_path)])
-        result["vtool_platforms"] = sorted(set(re.findall(r"platform\s+([A-Z0-9_]+)", output)))
+        result["vtool_build_versions"] = parse_vtool_build_versions(output)
+        result["vtool_platforms"] = sorted({entry["platform"] for entry in result["vtool_build_versions"]})
     except subprocess.CalledProcessError as error:
         result["vtool_error"] = error.output.strip() if error.output else str(error)
 
@@ -313,6 +336,32 @@ def entry_issues(entry: dict[str, object]) -> list[str]:
         issues.append(
             f"{platform}: expected vtool platform {expected_vtool_platform}, got {', '.join(str(value) for value in vtool_platforms)}"
         )
+        return issues
+
+    expected_minimum_deployment_target = entry.get("expected_minimum_deployment_target")
+    if not isinstance(expected_minimum_deployment_target, str):
+        issues.append(f"{platform}: unsupported minimum deployment target mapping")
+        return issues
+
+    vtool_build_versions = entry.get("vtool_build_versions")
+    if not isinstance(vtool_build_versions, list) or not vtool_build_versions:
+        issues.append(f"{platform}: missing vtool build version output")
+        return issues
+
+    actual_targets = sorted(
+        {
+            str(build_version["minos"])
+            for build_version in vtool_build_versions
+            if isinstance(build_version, dict) and build_version.get("platform") == expected_vtool_platform
+        }
+    )
+    if not actual_targets:
+        issues.append(f"{platform}: missing vtool build version for platform {expected_vtool_platform}")
+        return issues
+
+    expected_target = canonical_deployment_target(expected_minimum_deployment_target)
+    if actual_targets != [expected_target]:
+        issues.append(f"{platform}: expected minimum deployment target {expected_target}, got {', '.join(actual_targets)}")
 
     macos_framework_layout_issues = entry.get("macos_framework_layout_issues")
     if isinstance(macos_framework_layout_issues, list):

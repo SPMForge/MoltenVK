@@ -23,6 +23,33 @@ validator = load_validator_module()
 
 
 class ValidateMergeableXCFrameworkTests(unittest.TestCase):
+    def test_parse_vtool_build_versions_handles_multiline_output(self) -> None:
+        output = """\
+/tmp/MoltenVK (architecture arm64):
+Load command 10
+      cmd LC_BUILD_VERSION
+  cmdsize 32
+ platform TVOS
+    minos 14.0
+      sdk 26.4
+   ntools 1
+/tmp/MoltenVK (architecture arm64e):
+Load command 10
+      cmd LC_BUILD_VERSION
+  cmdsize 32
+ platform TVOS
+    minos 14.0
+      sdk 26.4
+   ntools 1
+"""
+        self.assertEqual(
+            validator.parse_vtool_build_versions(output),
+            [
+                {"platform": "TVOS", "minos": "14.0"},
+                {"platform": "TVOS", "minos": "14.0"},
+            ],
+        )
+
     def make_versioned_framework(self, root: Path, flattened: bool = False) -> tuple[Path, Path]:
         framework_path = root / "MoltenVK.framework"
         framework_path.mkdir()
@@ -112,6 +139,8 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
                 "binary_exists": True,
                 "expected_vtool_platform": "MACOS",
                 "vtool_platforms": ["MACOS"],
+                "expected_minimum_deployment_target": "11.0",
+                "vtool_build_versions": [{"platform": "MACOS", "minos": "11.0"}],
             }
         )
         self.assertEqual(issues, [])
@@ -126,6 +155,40 @@ class ValidateMergeableXCFrameworkTests(unittest.TestCase):
             }
         )
         self.assertEqual(issues, ["ios: missing vtool platform output"])
+
+    def test_entry_issues_fails_when_minimum_deployment_target_mismatches(self) -> None:
+        issues = validator.entry_issues(
+            {
+                "platform": "tvos",
+                "mergeable_metadata": True,
+                "binary_exists": True,
+                "expected_vtool_platform": "TVOS",
+                "vtool_platforms": ["TVOS"],
+                "expected_minimum_deployment_target": "14.0",
+                "vtool_build_versions": [{"platform": "TVOS", "minos": "14.5"}],
+            }
+        )
+        self.assertEqual(
+            issues,
+            ["tvos: expected minimum deployment target 14.0, got 14.5"],
+        )
+
+    def test_entry_issues_fails_without_matching_vtool_build_version(self) -> None:
+        issues = validator.entry_issues(
+            {
+                "platform": "xros",
+                "mergeable_metadata": True,
+                "binary_exists": True,
+                "expected_vtool_platform": "VISIONOS",
+                "vtool_platforms": ["VISIONOS"],
+                "expected_minimum_deployment_target": "1.0",
+                "vtool_build_versions": [{"platform": "TVOS", "minos": "14.0"}],
+            }
+        )
+        self.assertEqual(
+            issues,
+            ["xros: missing vtool build version for platform VISIONOS"],
+        )
 
     def test_macos_framework_layout_accepts_versioned_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

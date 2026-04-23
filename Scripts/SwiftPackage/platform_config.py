@@ -4,10 +4,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 from pathlib import Path
 
 DEFAULT_PLATFORM_CONFIG_PATH = Path(__file__).resolve().parents[2] / "SwiftPackage" / "platforms.json"
+DEPLOYMENT_TARGET_RE = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+
+
+def validate_deployment_target_version(value: str, family: str) -> str:
+    version = value.strip()
+    if not DEPLOYMENT_TARGET_RE.fullmatch(version):
+        raise ValueError(
+            f"deployment target version for {family} must be an explicit major.minor string such as 11.0 or 14.0"
+        )
+    return version
 
 
 def load_platform_config(path: str | Path = DEFAULT_PLATFORM_CONFIG_PATH) -> dict:
@@ -35,6 +46,8 @@ def load_platform_config(path: str | Path = DEFAULT_PLATFORM_CONFIG_PATH) -> dic
         xcodebuild_setting = entry.get("xcodebuild_setting")
         if not isinstance(version, str) or not version:
             raise ValueError(f"deployment target version for {family} must be a non-empty string")
+        version = validate_deployment_target_version(version, family)
+        entry["version"] = version
         if not isinstance(swiftpm_platform, str) or not swiftpm_platform:
             raise ValueError(f"swiftpm_platform for {family} must be a non-empty string")
         if not isinstance(xcodebuild_setting, str) or not xcodebuild_setting:
@@ -96,6 +109,11 @@ def manifest_platform_entries(config: dict) -> list[tuple[str, str]]:
 
 def expected_vtool_platforms(config: dict) -> dict[str, str]:
     return {entry["validator_key"]: entry["vtool_platform"] for entry in config["build_matrix"]}
+
+
+def expected_validator_deployment_targets(config: dict) -> dict[str, str]:
+    deployment_targets = config["deployment_targets"]
+    return {entry["validator_key"]: deployment_targets[entry["family"]]["version"] for entry in config["build_matrix"]}
 
 
 def deployment_target_build_settings(config: dict) -> list[tuple[str, str]]:

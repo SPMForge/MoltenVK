@@ -11,12 +11,11 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from platform_config import DEFAULT_PLATFORM_CONFIG_PATH, load_platform_config, manifest_platform_entries
+from platform_config import DEFAULT_PLATFORM_CONFIG_PATH, load_platform_config, manifest_platform_entries, validate_deployment_target_version
 
 CHECKSUM_RE = re.compile(r"^[0-9a-f]{64}$")
 RELEASE_REPOSITORY_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 SEMVER_RE = re.compile(r"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
-DEPLOYMENT_TARGET_RE = re.compile(r"^[0-9]+$")
 
 
 def validate_release_repository(value: str) -> str:
@@ -43,10 +42,7 @@ def validate_checksum(value: str) -> str:
 
 
 def validate_deployment_target(value: str, platform_name: str) -> str:
-    target = value.strip()
-    if not DEPLOYMENT_TARGET_RE.fullmatch(target):
-        raise ValueError(f"{platform_name} deployment target must be a whole major version such as 11 or 14.")
-    return target
+    return validate_deployment_target_version(value, platform_name)
 
 
 def render_manifest(
@@ -61,7 +57,7 @@ def render_manifest(
     )
 
     rendered_platforms = "\n".join(
-        f"        .{swiftpm_platform}(.v{deployment_target}),"
+        f'        .{swiftpm_platform}("{deployment_target}"),'
         for swiftpm_platform, deployment_target in platform_entries
     )
 
@@ -102,8 +98,8 @@ def main() -> int:
         default=str(DEFAULT_PLATFORM_CONFIG_PATH),
         help="Path to the centralized platform config JSON file.",
     )
-    parser.add_argument("--ios-deployment-target", help="Legacy override for the SwiftPM iOS deployment target major version.")
-    parser.add_argument("--macos-deployment-target", help="Legacy override for the SwiftPM macOS deployment target major version.")
+    parser.add_argument("--ios-deployment-target", help="Legacy override for the SwiftPM iOS deployment target string, such as 14.0.")
+    parser.add_argument("--macos-deployment-target", help="Legacy override for the SwiftPM macOS deployment target string, such as 11.0.")
     parser.add_argument("--output", default="Package.swift", help="Manifest output path.")
     args = parser.parse_args()
 

@@ -17,6 +17,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   verify:
     name: Verify publish pipeline
@@ -206,7 +209,10 @@ jobs:
             git ls-files --stage -- \
               'Scripts/SwiftPackage/build_swift_package_dependencies.sh' \
               'Scripts/SwiftPackage/common.sh' \
+              'Scripts/SwiftPackage/platform_config.py' \
+              'Scripts/SwiftPackage/prepare_upstream_workspace.py' \
               'Scripts/SwiftPackage/source_acquisition.sh' \
+              'SwiftPackage/platforms.json' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
@@ -215,7 +221,10 @@ jobs:
               'Scripts/SwiftPackage/build_swift_package.sh' \
               'Scripts/SwiftPackage/common.sh' \
               'Scripts/SwiftPackage/materialize_public_headers.py' \
+              'Scripts/SwiftPackage/platform_config.py' \
+              'Scripts/SwiftPackage/prepare_upstream_workspace.py' \
               'Scripts/SwiftPackage/source_acquisition.sh' \
+              'SwiftPackage/platforms.json' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
