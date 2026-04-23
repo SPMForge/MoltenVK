@@ -107,7 +107,16 @@ exit 1
 class PublishReleaseRepairTests(unittest.TestCase):
     maxDiff = None
 
-    def run_publish(self, version: str, release_kind: str, *, remote_tag_exists: bool, local_tag_exists: bool, release_exists: bool) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    def run_publish(
+        self,
+        version: str,
+        release_kind: str,
+        *,
+        remote_tag_exists: bool,
+        local_tag_exists: bool,
+        release_exists: bool,
+        release_action: str,
+    ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
         temp_root = prepare_temp_checkout()
         self.addCleanup(shutil.rmtree, temp_root, ignore_errors=True)
         create_release_assets(temp_root, version)
@@ -122,6 +131,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
         env["PATH"] = f"{bin_dir}:{env['PATH']}"
         env["GITHUB_REPOSITORY"] = "SPMForge/MoltenVK"
         env["GITHUB_TOKEN"] = "dummy-token"
+        env["MVK_RELEASE_ACTION"] = release_action
 
         completed = subprocess.run(
             ["bash", str(temp_root / "Scripts" / "SwiftPackage" / "publish_release.sh"), version, release_kind],
@@ -140,6 +150,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
             remote_tag_exists=True,
             local_tag_exists=True,
             release_exists=True,
+            release_action="edit",
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -160,6 +171,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
             remote_tag_exists=False,
             local_tag_exists=False,
             release_exists=False,
+            release_action="create",
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)

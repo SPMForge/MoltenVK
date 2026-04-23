@@ -18,16 +18,52 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    name: Run shared publish pipeline
+  verify:
+    name: Verify publish pipeline
     runs-on: macos-15
-    env:
-      MVK_ENABLE_CCACHE: "1"
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 2G
     defaults:
       run:
         shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Verify release publication logic
+        run: |
+          python3 ./tests/verify_compute_next_alpha_version.py
+          python3 ./tests/verify_release_publication.py
+          python3 ./tests/verify_publish_release_repair.py
+
+      - name: Verify wrapper contract
+        run: |
+          python3 ./tests/verify_platform_config.py
+          python3 ./tests/verify_validate_mergeable_xcframework.py
+          python3 ./tests/verify_sop_conformance.py
+          ./tests/verify_swift_package_integration.sh
+
+  resolve:
+    name: Resolve upstream and publication plan
+    needs: verify
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+    outputs:
+      upstream_ref: ${{ steps.plan.outputs.upstream_ref }}
+      target_version: ${{ steps.plan.outputs.target_version }}
+      publication_mode: ${{ steps.plan.outputs.publication_mode }}
+      release_action: ${{ steps.plan.outputs.release_action }}
+      remote_tag_exists: ${{ steps.plan.outputs.remote_tag_exists }}
+      release_exists: ${{ steps.plan.outputs.release_exists }}
+      metadata_needs_repair: ${{ steps.plan.outputs.metadata_needs_repair }}
+      missing_assets: ${{ steps.plan.outputs.missing_assets }}
+      reason: ${{ steps.plan.outputs.reason }}
 
     steps:
       - name: Checkout repository
@@ -39,23 +75,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      - name: Ensure ccache
-        run: |
-          if command -v ccache >/dev/null 2>&1; then
-            ccache --version | head -n 1
-            exit 0
-          fi
-          brew install ccache
-          ccache --version | head -n 1
-
-      - name: Require Swift 6 toolchain
-        run: |
-          swift --version
-          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
-            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
-            exit 1
-          }
 
       - name: Resolve upstream ref
         id: upstream
@@ -107,15 +126,71 @@ jobs:
           echo "ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${resolved_upstream_ref}"
 
+      - name: Resolve publication mode
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
+          INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+        run: |
+          python3 ./Scripts/SwiftPackage/release_publication.py plan \
+            --selection-mode "${INPUT_SELECTION_MODE}" \
+            --release-channel "${INPUT_RELEASE_CHANNEL}" \
+            --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --github-output "$GITHUB_OUTPUT"
+
+  build:
+    name: Build release artifacts
+    needs: resolve
+    if: needs.resolve.outputs.publication_mode != 'skip'
+    runs-on: macos-15
+    env:
+      MVK_ENABLE_CCACHE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Ensure ccache
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --version | head -n 1
+            exit 0
+          fi
+          brew install ccache
+          ccache --version | head -n 1
+
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
+
       - name: Preflight Apple platforms
         env:
-          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: ./Scripts/SwiftPackage/preflight_apple_platforms.sh
 
       - name: Prep cache key
         id: prep
         env:
-          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          RESOLVED_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: |
           xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
           upstream_tree_ref="refs/upstream-tags/${RESOLVED_UPSTREAM_REF}"
@@ -153,9 +228,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .ccache
-          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
+          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
           restore-keys: |
-            ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-
+            ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-
             ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-
 
       - name: Cache MoltenVK external dependencies
@@ -171,7 +246,7 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: dependencies-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.dependency_cache_inputs_hash }}-v2
+          key: dependencies-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.dependency_cache_inputs_hash }}-v2
 
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
@@ -179,74 +254,120 @@ jobs:
       - name: Prewarm MoltenVK dependencies
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         env:
-          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
 
-      - name: Resolve release target
-        id: release_target
-        env:
-          GH_TOKEN: ${{ github.token }}
-          INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
-          INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
-        run: |
-          git fetch --force --tags origin
-
-          selection_mode="${INPUT_SELECTION_MODE}"
-          release_channel="${INPUT_RELEASE_CHANNEL}"
-          resolved_upstream_ref="${RESOLVED_UPSTREAM_REF}"
-
-          case "${release_channel}" in
-            alpha|stable)
-              ;;
-            *)
-              echo "error: Unsupported release_channel: ${release_channel}" >&2
-              exit 1
-              ;;
-          esac
-
-          case "${selection_mode}" in
-            latest)
-              target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
-              ;;
-            requested)
-              if [[ "${release_channel}" == "alpha" ]]; then
-                target_version="$(python3 ./Scripts/SwiftPackage/compute_next_alpha_version.py --base-version "${resolved_upstream_ref#v}" --repo "$GITHUB_REPOSITORY")"
-              else
-                target_version="${resolved_upstream_ref#v}"
-              fi
-              ;;
-            *)
-              echo "error: Unsupported selection_mode: ${selection_mode}" >&2
-              exit 1
-              ;;
-          esac
-
-          echo "upstream_ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
-          echo "target_version=${target_version}" >> "$GITHUB_OUTPUT"
-          echo "Resolved upstream ref: ${resolved_upstream_ref}"
-          echo "Resolved package version: ${target_version}"
-
       - name: Prepare release artifacts
+        id: prepare
         env:
           SKIP_DEPENDENCY_FETCH: "1"
-          TARGET_VERSION: ${{ steps.release_target.outputs.target_version }}
-          MVK_UPSTREAM_REF: ${{ steps.release_target.outputs.upstream_ref }}
+          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+          MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
           RELEASE_KIND: ${{ inputs.release_channel }}
         run: |
+          rm -f "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path"
+
           if [[ "${RELEASE_KIND}" == "alpha" ]]; then
             ./Scripts/SwiftPackage/prepare_alpha_release.sh "$TARGET_VERSION"
           else
             ./Scripts/SwiftPackage/prepare_manual_release.sh "$TARGET_VERSION"
           fi
 
+          workspace_root="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path")"
+          [[ -n "$workspace_root" ]] || {
+            echo "error: prepared workspace path was empty" >&2
+            exit 1
+          }
+          [[ -d "$workspace_root" ]] || {
+            echo "error: prepared workspace path does not exist: $workspace_root" >&2
+            exit 1
+          }
+          echo "workspace_root=$workspace_root" >> "$GITHUB_OUTPUT"
+
       - name: Show ccache statistics
         if: always()
-        run: ./Scripts/SwiftPackage/report_ccache_stats.sh "Publish ccache statistics"
+        run: ./Scripts/SwiftPackage/report_ccache_stats.sh "Publish build ccache statistics"
+
+      - name: Stage release payload
+        id: payload
+        env:
+          WORKSPACE_ROOT: ${{ steps.prepare.outputs.workspace_root }}
+        run: |
+          payload_root="$RUNNER_TEMP/release-payload"
+          rm -rf "$payload_root"
+          mkdir -p \
+            "$payload_root/repo/Artifacts" \
+            "$payload_root/repo/SwiftPackage" \
+            "$payload_root/release-assets"
+
+          cp Package.swift "$payload_root/repo/Package.swift"
+          cp SwiftPackage/PackageVersion.txt "$payload_root/repo/SwiftPackage/PackageVersion.txt"
+          cp SwiftPackage/ReleaseRepository.txt "$payload_root/repo/SwiftPackage/ReleaseRepository.txt"
+          cp SwiftPackage/UpstreamRepository.txt "$payload_root/repo/SwiftPackage/UpstreamRepository.txt"
+          cp SwiftPackage/UpstreamSourceRef.txt "$payload_root/repo/SwiftPackage/UpstreamSourceRef.txt"
+          find Artifacts -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$payload_root/repo/Artifacts/" \;
+          cp "$WORKSPACE_ROOT/Artifacts/"*.zip "$payload_root/release-assets/"
+
+      - name: Upload release payload
+        uses: actions/upload-artifact@v4
+        with:
+          name: moltenvk-release-payload
+          path: ${{ runner.temp }}/release-payload
+          if-no-files-found: error
+
+  publish:
+    name: Publish package release
+    needs:
+      - resolve
+      - build
+    if: needs.resolve.outputs.publication_mode != 'skip'
+    runs-on: macos-15
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download release payload
+        uses: actions/download-artifact@v4
+        with:
+          name: moltenvk-release-payload
+          path: ${{ runner.temp }}/release-payload
+
+      - name: Restore generated release payload
+        run: |
+          cp "$RUNNER_TEMP/release-payload/repo/Package.swift" "$GITHUB_WORKSPACE/Package.swift"
+          mkdir -p "$GITHUB_WORKSPACE/Artifacts"
+          cp "$RUNNER_TEMP/release-payload/repo/Artifacts/"* "$GITHUB_WORKSPACE/Artifacts/"
+          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/PackageVersion.txt" "$GITHUB_WORKSPACE/SwiftPackage/PackageVersion.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/ReleaseRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/ReleaseRepository.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamRepository.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamSourceRef.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamSourceRef.txt"
+
+      - name: Verify existing package tag matches generated metadata
+        if: needs.resolve.outputs.remote_tag_exists == 'true'
+        env:
+          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+        run: |
+          git fetch --force origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
+          python3 ./Scripts/SwiftPackage/release_publication.py assert-tagged-state \
+            --tag "$TARGET_VERSION" \
+            --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Publish release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          TARGET_VERSION: ${{ steps.release_target.outputs.target_version }}
+          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
           RELEASE_KIND: ${{ inputs.release_channel }}
+          MVK_RELEASE_ACTION: ${{ needs.resolve.outputs.release_action }}
+          MVK_RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-payload/release-assets
         run: ./Scripts/SwiftPackage/publish_release.sh "$TARGET_VERSION" "$RELEASE_KIND"
