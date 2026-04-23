@@ -120,8 +120,9 @@ jobs:
           echo "dependency_cache_inputs_hash=${dependency_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "compiler_cache_inputs_hash=${compiler_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
 
-      - name: Cache compiler results
-        uses: actions/cache@v5
+      - name: Restore compiler cache
+        id: cache-compiler-restore
+        uses: actions/cache/restore@v5
         with:
           path: .ccache
           key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
@@ -187,6 +188,24 @@ jobs:
       - name: Show ccache statistics
         if: always()
         run: ./Scripts/SwiftPackage/report_ccache_stats.sh "Validate ccache statistics"
+
+      - name: Assess compiler cache payload
+        id: ccache-payload
+        if: ${{ steps.cache-compiler-restore.conclusion == 'success' && steps.build.conclusion == 'success' }}
+        run: ./Scripts/SwiftPackage/check_ccache_payload.sh .ccache 262144
+
+      - name: Save compiler cache
+        if: >-
+          ${{
+            steps.cache-compiler-restore.conclusion == 'success' &&
+            steps.cache-compiler-restore.outputs.cache-hit != 'true' &&
+            steps.build.conclusion == 'success' &&
+            steps.ccache-payload.outputs.non_empty == 'true'
+          }}
+        uses: actions/cache/save@v5
+        with:
+          path: .ccache
+          key: ${{ steps.cache-compiler-restore.outputs.cache-primary-key }}
 
       - name: Upload validation artifacts
         if: always()
