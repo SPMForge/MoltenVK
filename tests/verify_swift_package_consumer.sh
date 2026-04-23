@@ -72,7 +72,7 @@ spec.loader.exec_module(module)
 
 config = module.load_platform_config()
 for swiftpm_platform, deployment_target in module.manifest_platform_entries(config):
-    print(f"        .{swiftpm_platform}(.v{deployment_target}),")
+    print(f'        .{swiftpm_platform}("{deployment_target}"),')
 PY
 )"
 

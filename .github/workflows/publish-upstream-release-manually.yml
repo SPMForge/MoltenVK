@@ -17,6 +17,11 @@ on:
         options:
           - alpha
           - stable
+      publish_to_default_branch:
+        description: Also fast-forward the default branch to the generated stable package metadata commit
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -33,4 +38,5 @@ jobs:
       selection_mode: requested
       upstream_ref: ${{ inputs.upstream_ref }}
       release_channel: ${{ inputs.release_channel }}
+      publish_to_default_branch: ${{ inputs.publish_to_default_branch }}
     secrets: inherit

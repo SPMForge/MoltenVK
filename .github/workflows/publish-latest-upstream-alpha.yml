@@ -21,4 +21,5 @@ jobs:
     with:
       selection_mode: latest
       release_channel: alpha
+      publish_to_default_branch: false
     secrets: inherit

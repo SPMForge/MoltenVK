@@ -116,6 +116,8 @@ class PublishReleaseRepairTests(unittest.TestCase):
         local_tag_exists: bool,
         release_exists: bool,
         release_action: str,
+        publish_to_default_branch: bool = False,
+        default_branch: str = "main",
     ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
         temp_root = prepare_temp_checkout()
         self.addCleanup(shutil.rmtree, temp_root, ignore_errors=True)
@@ -132,6 +134,8 @@ class PublishReleaseRepairTests(unittest.TestCase):
         env["GITHUB_REPOSITORY"] = "SPMForge/MoltenVK"
         env["GITHUB_TOKEN"] = "dummy-token"
         env["MVK_RELEASE_ACTION"] = release_action
+        env["MVK_PUBLISH_TO_DEFAULT_BRANCH"] = "true" if publish_to_default_branch else "false"
+        env["MVK_DEFAULT_BRANCH"] = default_branch
 
         completed = subprocess.run(
             ["bash", str(temp_root / "Scripts" / "SwiftPackage" / "publish_release.sh"), version, release_kind],
@@ -142,6 +146,23 @@ class PublishReleaseRepairTests(unittest.TestCase):
             check=False,
         )
         return completed, temp_root, command_log
+
+    def test_alpha_create_tags_release_branch_without_pushing_default_branch(self) -> None:
+        completed, temp_root, command_log = self.run_publish(
+            "1.2.3-alpha.1",
+            "alpha",
+            remote_tag_exists=False,
+            local_tag_exists=False,
+            release_exists=False,
+            release_action="create",
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("git switch --create release/1.2.3-alpha.1", commands)
+        self.assertIn("git tag -a 1.2.3-alpha.1", commands)
+        self.assertIn("git push origin refs/tags/1.2.3-alpha.1:refs/tags/1.2.3-alpha.1", commands)
+        self.assertNotRegex(commands, r"git push origin [^\n]*:refs/heads/main")
 
     def test_alpha_repair_updates_existing_release_in_place(self) -> None:
         completed, temp_root, command_log = self.run_publish(
@@ -155,14 +176,36 @@ class PublishReleaseRepairTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         commands = command_log.read_text(encoding="utf-8")
-        self.assertIn("git add -A Artifacts", commands)
+        self.assertIn("git fetch --force origin refs/tags/1.2.3-alpha.4:refs/tags/1.2.3-alpha.4", commands)
         self.assertIn("gh release edit 1.2.3-alpha.4", commands)
         self.assertIn("--prerelease", commands)
         self.assertIn("--latest=false", commands)
         self.assertIn("gh release upload 1.2.3-alpha.4", commands)
         self.assertIn("--clobber", commands)
         self.assertNotIn("gh release create 1.2.3-alpha.4", commands)
+        self.assertNotIn("git switch --create release/1.2.3-alpha.4", commands)
         self.assertNotIn("git tag -a 1.2.3-alpha.4 refs/remotes/origin/main", commands)
+        self.assertNotRegex(commands, r"git push origin [^\n]*:refs/heads/main")
+
+    def test_alpha_missing_release_reuses_existing_tag_without_recreating_release_ref(self) -> None:
+        completed, temp_root, command_log = self.run_publish(
+            "1.2.3-alpha.2",
+            "alpha",
+            remote_tag_exists=True,
+            local_tag_exists=True,
+            release_exists=False,
+            release_action="create",
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("git fetch --force origin refs/tags/1.2.3-alpha.2:refs/tags/1.2.3-alpha.2", commands)
+        self.assertIn("gh release create 1.2.3-alpha.2", commands)
+        self.assertIn("gh release upload 1.2.3-alpha.2", commands)
+        self.assertNotIn("git switch --create release/1.2.3-alpha.2", commands)
+        self.assertNotIn("git tag -a 1.2.3-alpha.2", commands)
+        self.assertNotIn("git push origin refs/tags/1.2.3-alpha.2:refs/tags/1.2.3-alpha.2", commands)
+        self.assertNotRegex(commands, r"git push origin [^\n]*:refs/heads/main")
 
     def test_stable_missing_release_creates_and_uploads_assets(self) -> None:
         completed, temp_root, command_log = self.run_publish(
@@ -172,14 +215,17 @@ class PublishReleaseRepairTests(unittest.TestCase):
             local_tag_exists=False,
             release_exists=False,
             release_action="create",
+            publish_to_default_branch=True,
         )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
         commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("git switch --create release/1.2.3", commands)
         self.assertIn("git add -A Artifacts", commands)
         self.assertIn("git fetch --force origin refs/heads/main:refs/remotes/origin/main refs/tags/*:refs/tags/*", commands)
-        self.assertIn("git tag -a 1.2.3 refs/remotes/origin/main -m 1.2.3", commands)
+        self.assertIn("git tag -a 1.2.3", commands)
         self.assertIn("git push origin refs/tags/1.2.3:refs/tags/1.2.3", commands)
+        self.assertRegex(commands, r"git push origin [^\n]*:refs/heads/main")
         self.assertIn("gh release create 1.2.3", commands)
         self.assertIn("--verify-tag", commands)
         self.assertIn("gh release upload 1.2.3", commands)

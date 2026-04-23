@@ -51,8 +51,10 @@ Build and release flow
   - computes checksums from the final zip archives
   - renders `Package.swift`
 - `Scripts/SwiftPackage/publish_release.sh`
-  - commits generated metadata
-  - creates the plain-SemVer package tag
+  - creates a `release/<package_tag>` commit containing the generated metadata for that package version
+  - Alpha publishes create and tag a release/ commit without updating the default branch
+  - the default branch can be fast-forwarded only from the manual stable path by setting `publish_to_default_branch=true`
+  - creates the plain-SemVer package tag from that generated-metadata commit
   - creates the GitHub Release
 
 Public headers contract

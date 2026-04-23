@@ -13,6 +13,10 @@ on:
       release_channel:
         required: true
         type: string
+      publish_to_default_branch:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -85,12 +89,14 @@ jobs:
           INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
           INPUT_UPSTREAM_REF: ${{ inputs.upstream_ref }}
           INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          INPUT_PUBLISH_TO_DEFAULT_BRANCH: ${{ inputs.publish_to_default_branch }}
         run: |
           source ./Scripts/SwiftPackage/source_acquisition.sh
 
           selection_mode="${INPUT_SELECTION_MODE}"
           requested_upstream_ref="${INPUT_UPSTREAM_REF}"
           release_channel="${INPUT_RELEASE_CHANNEL}"
+          publish_to_default_branch="${INPUT_PUBLISH_TO_DEFAULT_BRANCH}"
 
           case "${release_channel}" in
             alpha|stable)
@@ -100,6 +106,11 @@ jobs:
               exit 1
               ;;
           esac
+
+          if [[ "${publish_to_default_branch}" == "true" && "${release_channel}" != "stable" ]]; then
+            echo "error: publish_to_default_branch is only supported for stable manual releases." >&2
+            exit 1
+          fi
 
           case "${selection_mode}" in
             latest)
@@ -330,8 +341,10 @@ jobs:
     needs:
       - resolve
       - build
-    if: needs.resolve.outputs.publication_mode != 'skip'
+    if: always() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.resolve.outputs.publication_mode != 'skip' || (inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.remote_tag_exists == 'true'))
     runs-on: macos-15
+    env:
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
     defaults:
       run:
         shell: bash
@@ -348,12 +361,14 @@ jobs:
           python-version: "3.11"
 
       - name: Download release payload
+        if: needs.resolve.outputs.publication_mode != 'skip'
         uses: actions/download-artifact@v4
         with:
           name: moltenvk-release-payload-${{ github.run_id }}
           path: ${{ runner.temp }}/release-payload
 
       - name: Restore generated release payload
+        if: needs.resolve.outputs.publication_mode != 'skip'
         run: |
           cp "$RUNNER_TEMP/release-payload/repo/Package.swift" "$GITHUB_WORKSPACE/Package.swift"
           mkdir -p "$GITHUB_WORKSPACE/Artifacts"
@@ -364,7 +379,7 @@ jobs:
           cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamSourceRef.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamSourceRef.txt"
 
       - name: Verify existing package tag matches generated metadata
-        if: needs.resolve.outputs.remote_tag_exists == 'true'
+        if: needs.resolve.outputs.publication_mode != 'skip' && needs.resolve.outputs.remote_tag_exists == 'true'
         env:
           TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
         run: |
@@ -374,10 +389,24 @@ jobs:
             --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Publish release
+        if: needs.resolve.outputs.publication_mode != 'skip'
         env:
           GITHUB_TOKEN: ${{ github.token }}
           TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
           RELEASE_KIND: ${{ inputs.release_channel }}
           MVK_RELEASE_ACTION: ${{ needs.resolve.outputs.release_action }}
           MVK_RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-payload/release-assets
+          MVK_DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
+          MVK_PUBLISH_TO_DEFAULT_BRANCH: ${{ inputs.publish_to_default_branch }}
         run: ./Scripts/SwiftPackage/publish_release.sh "$TARGET_VERSION" "$RELEASE_KIND"
+
+      - name: Optionally fast-forward default branch to existing stable tag
+        if: inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.publication_mode == 'skip'
+        env:
+          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+        run: |
+          git fetch --force origin \
+            "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}" \
+            "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
+          release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
+          git push origin "${release_commit}:refs/heads/${DEFAULT_BRANCH}"

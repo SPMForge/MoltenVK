@@ -7,6 +7,8 @@ source "$ROOT_DIR/Scripts/SwiftPackage/common.sh"
 TARGET_VERSION="${1:-}"
 RELEASE_KIND="${2:-}"
 RELEASE_ACTION="${MVK_RELEASE_ACTION:-}"
+PUBLISH_TO_DEFAULT_BRANCH="${MVK_PUBLISH_TO_DEFAULT_BRANCH:-false}"
+DEFAULT_BRANCH="${MVK_DEFAULT_BRANCH:-main}"
 PREPARED_WORKSPACE_ROOT=""
 
 fail() {
@@ -17,6 +19,9 @@ fail() {
 [[ -n "$TARGET_VERSION" ]] || fail "Missing release version argument."
 [[ "$RELEASE_KIND" == "alpha" || "$RELEASE_KIND" == "stable" ]] || fail "Release kind must be alpha or stable."
 [[ "$RELEASE_ACTION" == "create" || "$RELEASE_ACTION" == "edit" ]] || fail "MVK_RELEASE_ACTION must be create or edit."
+[[ "$PUBLISH_TO_DEFAULT_BRANCH" == "true" || "$PUBLISH_TO_DEFAULT_BRANCH" == "false" ]] || fail "MVK_PUBLISH_TO_DEFAULT_BRANCH must be true or false."
+[[ "$RELEASE_KIND" == "stable" || "$PUBLISH_TO_DEFAULT_BRANCH" == "false" ]] || fail "Only stable releases may update the default branch."
+[[ -n "$DEFAULT_BRANCH" ]] || fail "MVK_DEFAULT_BRANCH must not be empty."
 [[ -n "${GITHUB_TOKEN:-}" ]] || fail "GITHUB_TOKEN is required to publish GitHub releases."
 [[ -n "${GITHUB_REPOSITORY:-}" ]] || fail "GITHUB_REPOSITORY is required to publish GitHub releases."
 
@@ -33,19 +38,32 @@ release_notes() {
     fi
 }
 
-ensure_release_tag() {
+fetch_release_refs() {
     git fetch --force origin \
-        "refs/heads/main:refs/remotes/origin/main" \
+        "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}" \
         "refs/tags/*:refs/tags/*"
-    if git ls-remote --exit-code --tags origin "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1; then
-        return 0
+}
+
+remote_tag_exists() {
+    git ls-remote --exit-code --tags origin "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1
+}
+
+create_release_tag() {
+    if remote_tag_exists; then
+        fail "Package tag ${TARGET_VERSION} already exists on origin."
     fi
 
     if ! git rev-parse -q --verify "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1; then
-        git tag -a "${TARGET_VERSION}" "refs/remotes/origin/main" -m "${TARGET_VERSION}"
+        git tag -a "${TARGET_VERSION}" HEAD -m "${TARGET_VERSION}"
     fi
 
     git push origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
+}
+
+push_default_branch() {
+    local release_commit="${1:-}"
+    [[ -n "$release_commit" ]] || fail "Missing release commit for default-branch update."
+    git push origin "${release_commit}:refs/heads/${DEFAULT_BRANCH}"
 }
 
 resolve_release_assets_dir() {
@@ -88,6 +106,7 @@ publish_release_metadata() {
 cd "$ROOT_DIR"
 git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+fetch_release_refs
 
 dynamic_checksum_path="Artifacts/$(dynamic_release_checksum_name "$TARGET_VERSION")"
 static_checksum_path="Artifacts/$(static_release_checksum_name "$TARGET_VERSION")"
@@ -104,22 +123,36 @@ headers_zip_path="$RELEASE_ASSETS_DIR/$(headers_release_archive_name "$TARGET_VE
 [[ -f "$static_checksum_path" ]] || fail "Missing static release checksum: $static_checksum_path"
 [[ -f "$headers_checksum_path" ]] || fail "Missing headers release checksum: $headers_checksum_path"
 
-git add \
-    Package.swift \
-    SwiftPackage/PackageVersion.txt \
-    SwiftPackage/ReleaseRepository.txt \
-    SwiftPackage/UpstreamRepository.txt \
-    SwiftPackage/UpstreamSourceRef.txt
-git add -A Artifacts
+release_commit=""
+if [[ "$RELEASE_ACTION" == "create" ]]; then
+    if remote_tag_exists; then
+        git fetch --force origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
+        release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
+    else
+        git switch --create "release/${TARGET_VERSION}"
 
-if git diff --cached --quiet; then
-    :
+        git add \
+            Package.swift \
+            SwiftPackage/PackageVersion.txt \
+            SwiftPackage/ReleaseRepository.txt \
+            SwiftPackage/UpstreamRepository.txt \
+            SwiftPackage/UpstreamSourceRef.txt
+        git add -A Artifacts
+
+        if git diff --cached --quiet; then
+            release_commit="HEAD"
+        else
+            git commit -m "chore(release): MoltenVK ${TARGET_VERSION} [skip ci]"
+            release_commit="HEAD"
+        fi
+
+        create_release_tag
+    fi
 else
-    git commit -m "chore(release): MoltenVK ${TARGET_VERSION} [skip ci]"
-    git push origin HEAD:main
+    git fetch --force origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
+    release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
 fi
 
-ensure_release_tag
 publish_release_metadata
 gh release upload "$TARGET_VERSION" \
     "$dynamic_zip_path" \
@@ -130,6 +163,10 @@ gh release upload "$TARGET_VERSION" \
     "$headers_checksum_path" \
     --repo "$GITHUB_REPOSITORY" \
     --clobber
+
+if [[ "$PUBLISH_TO_DEFAULT_BRANCH" == "true" ]]; then
+    push_default_branch "$release_commit"
+fi
 
 if [[ -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE" ]]; then
     rm -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
