@@ -63,6 +63,7 @@ jobs:
     outputs:
       upstream_ref: ${{ steps.plan.outputs.upstream_ref }}
       target_version: ${{ steps.plan.outputs.target_version }}
+      build_version: ${{ steps.plan.outputs.build_version }}
       publication_mode: ${{ steps.plan.outputs.publication_mode }}
       release_action: ${{ steps.plan.outputs.release_action }}
       remote_tag_exists: ${{ steps.plan.outputs.remote_tag_exists }}
@@ -70,6 +71,8 @@ jobs:
       metadata_needs_repair: ${{ steps.plan.outputs.metadata_needs_repair }}
       missing_assets: ${{ steps.plan.outputs.missing_assets }}
       reason: ${{ steps.plan.outputs.reason }}
+      latest_alpha_version: ${{ steps.plan.outputs.latest_alpha_version }}
+      next_alpha_version: ${{ steps.plan.outputs.next_alpha_version }}
 
     steps:
       - name: Checkout repository
@@ -281,7 +284,7 @@ jobs:
         id: prepare
         env:
           SKIP_DEPENDENCY_FETCH: "1"
-          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+          TARGET_VERSION: ${{ needs.resolve.outputs.build_version }}
           MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
           RELEASE_KIND: ${{ inputs.release_channel }}
         run: |
@@ -396,10 +399,41 @@ jobs:
           cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamRepository.txt"
           cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamSourceRef.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamSourceRef.txt"
 
-      - name: Verify existing package tag matches generated metadata
-        if: needs.resolve.outputs.publication_mode != 'skip' && needs.resolve.outputs.remote_tag_exists == 'true'
+      - name: Resolve final publication mode from rendered package contract
+        id: final_plan
+        if: needs.resolve.outputs.publication_mode != 'skip'
         env:
-          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+          GH_TOKEN: ${{ github.token }}
+          INPUT_SELECTION_MODE: ${{ inputs.selection_mode }}
+          INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          RESOLVED_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
+        run: |
+          python3 ./Scripts/SwiftPackage/release_publication.py plan \
+            --selection-mode "${INPUT_SELECTION_MODE}" \
+            --release-channel "${INPUT_RELEASE_CHANNEL}" \
+            --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --rendered-package-swift "$GITHUB_WORKSPACE/Package.swift" \
+            --rendered-workspace-root "$GITHUB_WORKSPACE" \
+            --github-output "$GITHUB_OUTPUT"
+
+      - name: Retag generated release payload
+        if: needs.resolve.outputs.publication_mode != 'skip' && steps.final_plan.outputs.target_version != needs.resolve.outputs.build_version
+        env:
+          BUILD_VERSION: ${{ needs.resolve.outputs.build_version }}
+          TARGET_VERSION: ${{ steps.final_plan.outputs.target_version }}
+          RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-payload/release-assets
+        run: |
+          python3 ./Scripts/SwiftPackage/release_publication.py retag-workspace \
+            --source-version "$BUILD_VERSION" \
+            --target-version "$TARGET_VERSION" \
+            --workspace-root "$GITHUB_WORKSPACE" \
+            --release-assets-dir "$RELEASE_ASSETS_DIR"
+
+      - name: Verify existing package tag matches generated metadata
+        if: needs.resolve.outputs.publication_mode != 'skip' && steps.final_plan.outputs.remote_tag_exists == 'true'
+        env:
+          TARGET_VERSION: ${{ steps.final_plan.outputs.target_version }}
         run: |
           git fetch --force origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
           python3 ./Scripts/SwiftPackage/release_publication.py assert-tagged-state \
@@ -407,12 +441,12 @@ jobs:
             --workspace-root "$GITHUB_WORKSPACE"
 
       - name: Publish release
-        if: needs.resolve.outputs.publication_mode != 'skip'
+        if: needs.resolve.outputs.publication_mode != 'skip' && steps.final_plan.outputs.publication_mode != 'skip'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+          TARGET_VERSION: ${{ steps.final_plan.outputs.target_version }}
           RELEASE_KIND: ${{ inputs.release_channel }}
-          MVK_RELEASE_ACTION: ${{ needs.resolve.outputs.release_action }}
+          MVK_RELEASE_ACTION: ${{ steps.final_plan.outputs.release_action }}
           MVK_RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-payload/release-assets
           MVK_DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
           MVK_PUBLISH_TO_DEFAULT_BRANCH: ${{ inputs.publish_to_default_branch }}
