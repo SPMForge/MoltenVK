@@ -26,6 +26,10 @@ Package contract
   - `MoltenVK-static-<version>.xcframework.zip`
   - `MoltenVKHeaders-<version>.zip`
 - Current generated manifest path: `Package.swift`
+- Runtime dependency model: `none`
+  - The distributed `MoltenVK.framework` depends only on its own install name and Apple system frameworks/libraries such as Metal, Foundation, UIKit/AppKit, IOSurface, libc++, and libSystem.
+  - This package is a Vulkan-over-Metal provider framework. It does not ship a `libvulkan.dylib` loader and does not promise a `libvulkan.1.dylib` alias.
+  - Consumers that require a Vulkan loader name must satisfy that loader contract in their own package or app runtime closure; the MoltenVK SwiftPM package should not hide that gap with app-side `dlopen()` behavior.
 
 Source acquisition contract
 ---------------------------
