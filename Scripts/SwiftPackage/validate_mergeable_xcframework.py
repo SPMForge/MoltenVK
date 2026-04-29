@@ -24,6 +24,7 @@ PUBLIC_HEADER_SUFFIXES = {".h", ".hpp", ".cppm"}
 INCLUDE_DIRECTIVE_RE = re.compile(r'^(?P<prefix>\s*#\s*(?:include|import)\s*)(?P<open>[<"])(?P<target>[^>"]+)(?P<close>[>"])')
 VTOOL_BUILD_VERSION_RE = re.compile(r"platform\s+([A-Z0-9_]+)\s+minos\s+([0-9.]+)")
 MAX_FRAMEWORK_INCLUDE_ISSUES = 25
+PROHIBITED_RUNTIME_LIBRARY_NAMES = {"libvulkan.dylib", "libvulkan.1.dylib"}
 
 
 def command_output(arguments: list[str]) -> str:
@@ -46,6 +47,29 @@ def parse_vtool_build_versions(output: str) -> list[dict[str, str]]:
         {"platform": platform, "minos": canonical_deployment_target(minos)}
         for platform, minos in VTOOL_BUILD_VERSION_RE.findall(output)
     ]
+
+
+def parse_otool_libraries(output: str) -> list[str]:
+    libraries: list[str] = []
+    for line in output.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.endswith(":"):
+            continue
+        if not line[:1].isspace():
+            continue
+        libraries.append(stripped.split()[0])
+    return libraries
+
+
+def runtime_dependency_issues(platform: str, linked_libraries: list[object]) -> list[str]:
+    issues: list[str] = []
+    for library in linked_libraries:
+        if not isinstance(library, str):
+            continue
+        library_name = PurePosixPath(library).name
+        if library_name in PROHIBITED_RUNTIME_LIBRARY_NAMES:
+            issues.append(f"{platform}: unexpected Vulkan loader runtime dependency {library}")
+    return issues
 
 
 def platform_key(entry: dict[str, object]) -> str:
@@ -304,6 +328,16 @@ def inspect_entry(xcframework_path: Path, entry: dict[str, object]) -> dict[str,
     except subprocess.CalledProcessError as error:
         result["vtool_error"] = error.output.strip() if error.output else str(error)
 
+    if not shutil.which("otool"):
+        result["otool_error"] = "otool is unavailable"
+        return result
+
+    try:
+        output = command_output(["otool", "-L", str(binary_path)])
+        result["linked_libraries"] = parse_otool_libraries(output)
+    except subprocess.CalledProcessError as error:
+        result["otool_error"] = error.output.strip() if error.output else str(error)
+
     return result
 
 
@@ -370,6 +404,14 @@ def entry_issues(entry: dict[str, object]) -> list[str]:
     framework_interface_issues = entry.get("framework_interface_issues")
     if isinstance(framework_interface_issues, list):
         issues.extend(str(issue) for issue in framework_interface_issues)
+
+    otool_error = entry.get("otool_error")
+    if isinstance(otool_error, str) and otool_error:
+        issues.append(f"{platform}: unable to read runtime dependencies ({otool_error})")
+
+    linked_libraries = entry.get("linked_libraries")
+    if isinstance(linked_libraries, list):
+        issues.extend(runtime_dependency_issues(platform, linked_libraries))
 
     return issues
 

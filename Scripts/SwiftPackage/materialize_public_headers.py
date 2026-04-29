@@ -152,6 +152,12 @@ def materialize_public_headers(moltenvk_api_dir: Path, vulkan_headers_root: Path
     copy_tree(moltenvk_api_dir, output_dir / "MoltenVK")
     copy_tree(vulkan_headers_root / "vulkan", output_dir / "vulkan")
     copy_tree(vulkan_headers_root / "vk_video", output_dir / "vk_video")
+
+    copy_tree(output_dir / "vulkan", output_dir / "MoltenVK" / "vulkan")
+    copy_tree(output_dir / "vk_video", output_dir / "MoltenVK" / "vk_video")
+    rewrite_framework_includes(output_dir / "MoltenVK")
+    copy_tree(output_dir / "MoltenVK" / "vulkan", output_dir / "vulkan")
+    copy_tree(output_dir / "MoltenVK" / "vk_video", output_dir / "vk_video")
     ensure_no_symlinks(output_dir)
 
 

@@ -79,6 +79,8 @@ assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "platform_deployme
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "--xcframework-path"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" "COPYFILE_DISABLE=1"
 assert_contains "Scripts/SwiftPackage/build_swift_package.sh" 'swift package compute-checksum "$HEADERS_ZIP"'
+assert_contains "Scripts/SwiftPackage/materialize_public_headers.py" 'output_dir / "MoltenVK" / "vulkan"'
+assert_contains "Scripts/SwiftPackage/materialize_public_headers.py" 'output_dir / "MoltenVK" / "vk_video"'
 assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_API_HEADERS_DIR"
 assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_VULKAN_HEADERS_ROOT"
 assert_contains "Scripts/SwiftPackage/common.sh" "MOLTENVK_PUBLIC_HEADERS_SCRIPT"
@@ -102,9 +104,12 @@ assert_contains "Scripts/SwiftPackage/publish_release.sh" "gh release edit"
 assert_contains "Scripts/SwiftPackage/publish_release.sh" "gh release upload"
 assert_contains "Scripts/SwiftPackage/publish_release.sh" "--latest=false"
 assert_contains "Scripts/SwiftPackage/publish_release.sh" "--clobber"
+assert_contains "Scripts/SwiftPackage/publish_release.sh" "does not ship a Vulkan loader dylib"
+assert_contains "Scripts/SwiftPackage/publish_release.sh" "MoltenVKHeaders-\${TARGET_VERSION}.zip extracted include/ as Vulkan_INCLUDE_DIR"
 assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "framework interface surface"
 assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "missing framework module map"
 assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "non-modular framework include"
+assert_contains "Scripts/SwiftPackage/validate_mergeable_xcframework.py" "libvulkan.1.dylib"
 
 assert_missing "Sources/MoltenVK"
 
@@ -128,6 +133,10 @@ assert_contains "README.md" 'Release tag format: `<version>`'
 assert_contains "README.md" "-ld_classic"
 assert_contains "README.md" "framework slices carry the public headers and module map internally"
 assert_contains "README.md" "framework-style same-module imports"
+assert_contains "README.md" "C/C++ build-time include contract"
+assert_contains "README.md" "Vulkan_INCLUDE_DIR=<extracted>/include"
+assert_contains "README.md" "Vulkan_LIBRARY=<path-to-MoltenVK.framework/MoltenVK>"
+assert_contains "README.md" 'should not assume `MoltenVK.framework/Headers` alone'
 
 assert_missing "SwiftPackage/package.json"
 assert_missing "SwiftPackage/package-lock.json"
@@ -255,6 +264,8 @@ assert_contains "tests/verify_swift_package_consumer.sh" '.package(name: "Molten
 assert_contains "tests/verify_swift_package_consumer.sh" "MERGED_BINARY_TYPE=automatic"
 assert_contains "tests/verify_swift_package_consumer.sh" "consumer_test_platform_ids"
 assert_contains "tests/verify_swift_package_artifacts.sh" "ditto -x -k"
+assert_contains "tests/verify_public_headers.py" "combined-vulkan-and-framework-style"
+assert_contains "tests/verify_public_headers.py" "clang++"
 
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-manifest-renderer.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT

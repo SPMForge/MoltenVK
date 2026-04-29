@@ -31,11 +31,20 @@ UPSTREAM_SOURCE_REF="$(tr -d '[:space:]' <"$UPSTREAM_SOURCE_REF_FILE")"
 [[ -n "$UPSTREAM_SOURCE_REF" ]] || fail "Upstream source ref record is empty: $UPSTREAM_SOURCE_REF_FILE"
 
 release_notes() {
+    local release_description
     if [[ "$RELEASE_KIND" == "alpha" ]]; then
-        printf 'Automated alpha Swift Package release for MoltenVK %s from upstream %s.\n' "$TARGET_VERSION" "$UPSTREAM_SOURCE_REF"
+        release_description="Automated alpha Swift Package release for MoltenVK ${TARGET_VERSION} from upstream ${UPSTREAM_SOURCE_REF}."
     else
-        printf 'Manual stable Swift Package release for MoltenVK %s from upstream %s.\n' "$TARGET_VERSION" "$UPSTREAM_SOURCE_REF"
+        release_description="Manual stable Swift Package release for MoltenVK ${TARGET_VERSION} from upstream ${UPSTREAM_SOURCE_REF}."
     fi
+
+    cat <<EOF
+${release_description}
+
+This package remains a provider framework package for MoltenVK.framework.
+It does not ship a Vulkan loader dylib and does not promise libvulkan.dylib or libvulkan.1.dylib.
+C/C++ Vulkan API consumers should use MoltenVKHeaders-${TARGET_VERSION}.zip extracted include/ as Vulkan_INCLUDE_DIR and link against MoltenVK.framework/MoltenVK.
+EOF
 }
 
 fetch_release_refs() {

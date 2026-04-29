@@ -50,7 +50,7 @@ Build and release flow
   - builds mergeable dynamic MoltenVK archives
   - stages the public headers and explicit `module.modulemap` inside each `MoltenVK.framework` slice in the final `MoltenVK.xcframework`
   - rewrites same-framework public header dependencies to framework-style `<MoltenVK/...>` imports before publication
-  - materializes `MoltenVKHeaders-<version>.zip` as an auxiliary native-consumer headers asset without storing those headers in the wrapper repository
+  - materializes `MoltenVKHeaders-<version>.zip` as the C/C++ build-time include contract without storing those headers in the wrapper repository
   - assembles XCFramework artifacts
   - computes checksums from the final zip archives
   - renders `Package.swift`
@@ -67,7 +67,11 @@ Public headers contract
 - The SwiftPM package no longer relies on a wrapper source target, repo-local `publicHeadersPath`, or checkout-state local artifact fallback in the committed `Package.swift`.
 - The importable `MoltenVK` module surface lives inside each `MoltenVK.framework` slice as framework-internal `Headers` plus `Modules/module.modulemap`.
 - Those framework-internal public headers must use framework-style same-module imports such as `<MoltenVK/vulkan/vulkan.h>`, not quoted or relative includes.
-- `Artifacts/MoltenVKHeaders-<version>.zip` remains an auxiliary native-consumer asset built from temporary staging, not from checked-in wrapper headers.
+- `Artifacts/MoltenVKHeaders-<version>.zip` is the documented C/C++ build-time include contract built from temporary staging, not from checked-in wrapper headers.
+- After extracting `MoltenVKHeaders-<version>.zip`, the documented include root is the extracted `include/` directory.
+- That include root exposes both Vulkan SDK-style paths such as `<vulkan/vulkan.h>` and framework-style MoltenVK paths such as `<MoltenVK/vulkan/vk_platform.h>` and `<MoltenVK/vk_video/vulkan_video_codecs_common.h>`.
+- CMake-style native consumers should pass `Vulkan_INCLUDE_DIR=<extracted>/include` and `Vulkan_LIBRARY=<path-to-MoltenVK.framework/MoltenVK>`.
+- Native consumers should not assume `MoltenVK.framework/Headers` alone is a sufficient CMake include root.
 - The wrapper repository must not keep a checked-in `Sources/MoltenVK/include` tree to satisfy SwiftPM import behavior.
 
 CI topology

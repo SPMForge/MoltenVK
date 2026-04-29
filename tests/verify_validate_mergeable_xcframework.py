@@ -50,6 +50,23 @@ Load command 10
             ],
         )
 
+    def test_parse_otool_libraries_handles_fat_output(self) -> None:
+        output = """\
+/tmp/MoltenVK (architecture arm64):
+    @rpath/MoltenVK.framework/MoltenVK (compatibility version 0.0.0, current version 0.0.0)
+    /System/Library/Frameworks/Metal.framework/Versions/A/Metal (compatibility version 1.0.0, current version 367.4.0)
+/tmp/MoltenVK (architecture x86_64):
+    @rpath/libvulkan.1.dylib (compatibility version 1.0.0, current version 1.0.0)
+"""
+        self.assertEqual(
+            validator.parse_otool_libraries(output),
+            [
+                "@rpath/MoltenVK.framework/MoltenVK",
+                "/System/Library/Frameworks/Metal.framework/Versions/A/Metal",
+                "@rpath/libvulkan.1.dylib",
+            ],
+        )
+
     def make_versioned_framework(self, root: Path, flattened: bool = False) -> tuple[Path, Path]:
         framework_path = root / "MoltenVK.framework"
         framework_path.mkdir()
@@ -144,6 +161,27 @@ Load command 10
             }
         )
         self.assertEqual(issues, [])
+
+    def test_entry_issues_rejects_vulkan_loader_dependencies(self) -> None:
+        issues = validator.entry_issues(
+            {
+                "platform": "macos",
+                "mergeable_metadata": True,
+                "binary_exists": True,
+                "expected_vtool_platform": "MACOS",
+                "vtool_platforms": ["MACOS"],
+                "expected_minimum_deployment_target": "11.0",
+                "vtool_build_versions": [{"platform": "MACOS", "minos": "11.0"}],
+                "linked_libraries": [
+                    "@rpath/MoltenVK.framework/MoltenVK",
+                    "@rpath/libvulkan.1.dylib",
+                ],
+            }
+        )
+        self.assertEqual(
+            issues,
+            ["macos: unexpected Vulkan loader runtime dependency @rpath/libvulkan.1.dylib"],
+        )
 
     def test_entry_issues_fails_without_vtool_output(self) -> None:
         issues = validator.entry_issues(
