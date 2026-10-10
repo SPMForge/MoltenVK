@@ -289,7 +289,7 @@ def read_optional_tagged_text(tag: str, relative_path: str) -> str | None:
         check=False,
     )
     if fetch_completed.returncode != 0:
-        return None
+        fail(f"Unable to fetch tag {tag} while reading {relative_path}.")
 
     completed = run_command(["git", "show", f"refs/tags/{tag}:{relative_path}"], check=False)
     if completed.returncode == 0:
@@ -328,10 +328,11 @@ def select_existing_or_next_alpha_plan(
 ) -> ReleasePlan:
     highest_tag = str(highest_alpha)
     highest_plan = inspect_target_state(repo, upstream_ref, highest_tag, release_channel, remote_tags)
-    if highest_plan.publication_mode != "skip":
-        return with_alpha_context(highest_plan, highest_alpha, base_version)
 
     if rendered_package_swift is None and rendered_workspace_root is None:
+        if highest_plan.publication_mode != "skip":
+            return with_alpha_context(highest_plan, highest_alpha, base_version)
+
         return with_alpha_context(
             ReleasePlan(
                 upstream_ref=highest_plan.upstream_ref,
@@ -515,6 +516,9 @@ def generated_contract_matches_tag(tag: str, rendered_package_swift: str | None,
 
             tagged_text = read_optional_tagged_text(tag, relative_path)
             if tagged_text is None:
+                tag_rev = run_command(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], check=False)
+                if tag_rev.returncode == 0:
+                    return False
                 fail(f"Package tag {tag} exists but {relative_path} could not be read from the tag.")
             if tagged_text != workspace_path.read_text(encoding="utf-8"):
                 return False
@@ -525,6 +529,9 @@ def generated_contract_matches_tag(tag: str, rendered_package_swift: str | None,
 
     tagged_package_swift = read_optional_tagged_text(tag, "Package.swift")
     if tagged_package_swift is None:
+        tag_rev = run_command(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], check=False)
+        if tag_rev.returncode == 0:
+            return False
         fail(f"Package tag {tag} exists but Package.swift could not be read from the tag.")
     return tagged_package_swift == rendered_package_swift
 

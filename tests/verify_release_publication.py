@@ -6,6 +6,7 @@ import contextlib
 import importlib.util
 import io
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -432,6 +433,78 @@ class ReleasePublicationTests(unittest.TestCase):
         self.assertEqual(plan.release_action, "edit")
         self.assertTrue(plan.metadata_needs_repair)
 
+    def test_alpha_latest_mints_next_version_when_incomplete_highest_alpha_contract_drifts(self) -> None:
+        existing_version = "1.2.3-alpha.4"
+        next_version = "1.2.3-alpha.5"
+        original_remote_tags = module.list_remote_tag_names
+        original_release_tags = module.list_github_release_tags
+        original_fetch_release = module.fetch_github_release
+        original_latest_tag = module.fetch_latest_release_tag
+        original_read_tagged_text = module.read_optional_tagged_text
+        try:
+            module.list_remote_tag_names = lambda: [existing_version]
+            module.list_github_release_tags = lambda repo: []
+            module.fetch_github_release = lambda repo, tag: None
+            module.fetch_latest_release_tag = lambda repo: None
+            module.read_optional_tagged_text = lambda tag, relative_path: "// old Package.swift\n"
+
+            plan = module.resolve_release_plan(
+                selection_mode="latest",
+                release_channel="alpha",
+                upstream_ref="v1.2.3",
+                repo="SPMForge/MoltenVK",
+                rendered_package_swift="// new Package.swift\n",
+            )
+        finally:
+            module.list_remote_tag_names = original_remote_tags
+            module.list_github_release_tags = original_release_tags
+            module.fetch_github_release = original_fetch_release
+            module.fetch_latest_release_tag = original_latest_tag
+            module.read_optional_tagged_text = original_read_tagged_text
+
+        self.assertEqual(plan.target_version, next_version)
+        self.assertEqual(plan.build_version, existing_version)
+        self.assertEqual(plan.publication_mode, "create")
+        self.assertEqual(plan.release_action, "create")
+        self.assertFalse(plan.remote_tag_exists)
+        self.assertFalse(plan.release_exists)
+
+    def test_alpha_latest_repairs_when_incomplete_highest_alpha_contract_matches(self) -> None:
+        existing_version = "1.2.3-alpha.4"
+        rendered_manifest = "// matching Package.swift\n"
+        original_remote_tags = module.list_remote_tag_names
+        original_release_tags = module.list_github_release_tags
+        original_fetch_release = module.fetch_github_release
+        original_latest_tag = module.fetch_latest_release_tag
+        original_read_tagged_text = module.read_optional_tagged_text
+        try:
+            module.list_remote_tag_names = lambda: [existing_version]
+            module.list_github_release_tags = lambda repo: []
+            module.fetch_github_release = lambda repo, tag: None
+            module.fetch_latest_release_tag = lambda repo: None
+            module.read_optional_tagged_text = lambda tag, relative_path: rendered_manifest
+
+            plan = module.resolve_release_plan(
+                selection_mode="latest",
+                release_channel="alpha",
+                upstream_ref="v1.2.3",
+                repo="SPMForge/MoltenVK",
+                rendered_package_swift=rendered_manifest,
+            )
+        finally:
+            module.list_remote_tag_names = original_remote_tags
+            module.list_github_release_tags = original_release_tags
+            module.fetch_github_release = original_fetch_release
+            module.fetch_latest_release_tag = original_latest_tag
+            module.read_optional_tagged_text = original_read_tagged_text
+
+        self.assertEqual(plan.target_version, existing_version)
+        self.assertEqual(plan.build_version, existing_version)
+        self.assertEqual(plan.publication_mode, "repair")
+        self.assertEqual(plan.release_action, "create")
+        self.assertTrue(plan.remote_tag_exists)
+        self.assertFalse(plan.release_exists)
+
     def test_stable_skip_when_existing_release_is_complete(self) -> None:
         version = "1.2.3"
         original_remote_tags = module.list_remote_tag_names
@@ -617,6 +690,38 @@ class ReleasePublicationTests(unittest.TestCase):
         rendered_manifest = (temp_root / "Package.swift").read_text(encoding="utf-8")
         self.assertIn(f"releases/download/{target_version}/MoltenVK-{target_version}.xcframework.zip", rendered_manifest)
         self.assertIn(f'checksum: "{"a" * 64}"', rendered_manifest)
+
+    def test_read_optional_tagged_text_fails_when_git_fetch_fails(self) -> None:
+        original_run_command = module.run_command
+        try:
+            def fake_run_command(command: list[str], check: bool = True):
+                if command[:2] == ["git", "show"]:
+                    return subprocess.CompletedProcess(command, 1, stdout="", stderr="fatal")
+                if command[:2] == ["git", "fetch"]:
+                    return subprocess.CompletedProcess(command, 128, stdout="", stderr="fatal")
+                return original_run_command(command, check=check)
+
+            module.run_command = fake_run_command
+            with self.assertRaises(SystemExit):
+                module.read_optional_tagged_text("1.2.3-alpha.1", "Package.swift")
+        finally:
+            module.run_command = original_run_command
+
+    def test_read_optional_tagged_text_returns_none_when_fetch_succeeds_but_file_missing(self) -> None:
+        original_run_command = module.run_command
+        try:
+            def fake_run_command(command: list[str], check: bool = True):
+                if command[:2] == ["git", "show"]:
+                    return subprocess.CompletedProcess(command, 1, stdout="", stderr="fatal")
+                if command[:2] == ["git", "fetch"]:
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                return original_run_command(command, check=check)
+
+            module.run_command = fake_run_command
+            result = module.read_optional_tagged_text("1.2.3-alpha.1", "Package.swift")
+            self.assertIsNone(result)
+        finally:
+            module.run_command = original_run_command
 
 
 if __name__ == "__main__":
