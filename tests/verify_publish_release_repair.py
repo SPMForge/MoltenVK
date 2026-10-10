@@ -48,7 +48,14 @@ def create_release_assets(root: Path, version: str) -> None:
     (root / "SwiftPackage" / ".prepared-workspace-path").write_text(str(prepared_workspace), encoding="utf-8")
 
 
-def install_git_wrapper(bin_dir: Path, log_file: Path, *, remote_tag_exists: bool, local_tag_exists: bool) -> None:
+def install_git_wrapper(
+    bin_dir: Path,
+    log_file: Path,
+    *,
+    remote_tag_exists: bool,
+    local_tag_exists: bool,
+    fail_push_default_branch: bool = False,
+) -> None:
     write_executable(
         bin_dir / "git",
         f"""#!/bin/bash
@@ -72,6 +79,12 @@ case "$1" in
       exit 0
     fi
     exit 1
+    ;;
+  push)
+    if [[ "{str(fail_push_default_branch).lower()}" == "true" && "$*" == *":refs/heads/"* ]]; then
+      exit 1
+    fi
+    exit 0
     ;;
   diff)
     exit 0
@@ -139,6 +152,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
         default_branch: str = "main",
         fail_release_create: bool = False,
         fail_release_upload: bool = False,
+        fail_push_default_branch: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
         temp_root = prepare_temp_checkout()
         self.addCleanup(shutil.rmtree, temp_root, ignore_errors=True)
@@ -147,7 +161,13 @@ class PublishReleaseRepairTests(unittest.TestCase):
         bin_dir = temp_root / "bin"
         bin_dir.mkdir()
         command_log = temp_root / "commands.log"
-        install_git_wrapper(bin_dir, command_log, remote_tag_exists=remote_tag_exists, local_tag_exists=local_tag_exists)
+        install_git_wrapper(
+            bin_dir,
+            command_log,
+            remote_tag_exists=remote_tag_exists,
+            local_tag_exists=local_tag_exists,
+            fail_push_default_branch=fail_push_default_branch,
+        )
         install_gh_wrapper(
             bin_dir,
             command_log,
@@ -293,6 +313,27 @@ class PublishReleaseRepairTests(unittest.TestCase):
         self.assertIn("gh release upload 1.2.3", commands)
         self.assertIn("--clobber", commands)
         self.assertNotIn("gh release edit 1.2.3", commands)
+
+    def test_stable_create_does_not_rollback_release_when_default_branch_push_fails(self) -> None:
+        completed, temp_root, command_log = self.run_publish(
+            "1.2.3",
+            "stable",
+            remote_tag_exists=False,
+            local_tag_exists=False,
+            release_exists=False,
+            release_action="create",
+            publish_to_default_branch=True,
+            fail_push_default_branch=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("git push origin refs/tags/1.2.3:refs/tags/1.2.3", commands)
+        self.assertIn("gh release create 1.2.3", commands)
+        self.assertIn("gh release upload 1.2.3", commands)
+        self.assertIn("git push origin HEAD:refs/heads/main", commands)
+        self.assertNotIn("gh release delete 1.2.3", commands)
+        self.assertNotIn("git push origin :refs/tags/1.2.3", commands)
 
 
 if __name__ == "__main__":

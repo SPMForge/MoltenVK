@@ -213,13 +213,13 @@ run_with_retry gh release upload "$TARGET_VERSION" \
     --repo "$GITHUB_REPOSITORY" \
     --clobber
 
-if [[ "$PUBLISH_TO_DEFAULT_BRANCH" == "true" ]]; then
-    push_default_branch "$release_commit"
-fi
-
 created_new_remote_tag="false"
 created_new_release="false"
 trap - ERR
+
+if [[ "$PUBLISH_TO_DEFAULT_BRANCH" == "true" ]]; then
+    push_default_branch "$release_commit"
+fi
 
 if [[ -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE" ]]; then
     rm -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
