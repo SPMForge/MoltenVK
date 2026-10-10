@@ -6,6 +6,7 @@ import contextlib
 import importlib.util
 import io
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -689,6 +690,38 @@ class ReleasePublicationTests(unittest.TestCase):
         rendered_manifest = (temp_root / "Package.swift").read_text(encoding="utf-8")
         self.assertIn(f"releases/download/{target_version}/MoltenVK-{target_version}.xcframework.zip", rendered_manifest)
         self.assertIn(f'checksum: "{"a" * 64}"', rendered_manifest)
+
+    def test_read_optional_tagged_text_fails_when_git_fetch_fails(self) -> None:
+        original_run_command = module.run_command
+        try:
+            def fake_run_command(command: list[str], check: bool = True):
+                if command[:2] == ["git", "show"]:
+                    return subprocess.CompletedProcess(command, 1, stdout="", stderr="fatal")
+                if command[:2] == ["git", "fetch"]:
+                    return subprocess.CompletedProcess(command, 128, stdout="", stderr="fatal")
+                return original_run_command(command, check=check)
+
+            module.run_command = fake_run_command
+            with self.assertRaises(SystemExit):
+                module.read_optional_tagged_text("1.2.3-alpha.1", "Package.swift")
+        finally:
+            module.run_command = original_run_command
+
+    def test_read_optional_tagged_text_returns_none_when_fetch_succeeds_but_file_missing(self) -> None:
+        original_run_command = module.run_command
+        try:
+            def fake_run_command(command: list[str], check: bool = True):
+                if command[:2] == ["git", "show"]:
+                    return subprocess.CompletedProcess(command, 1, stdout="", stderr="fatal")
+                if command[:2] == ["git", "fetch"]:
+                    return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+                return original_run_command(command, check=check)
+
+            module.run_command = fake_run_command
+            result = module.read_optional_tagged_text("1.2.3-alpha.1", "Package.swift")
+            self.assertIsNone(result)
+        finally:
+            module.run_command = original_run_command
 
 
 if __name__ == "__main__":

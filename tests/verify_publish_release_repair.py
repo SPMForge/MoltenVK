@@ -101,6 +101,7 @@ def install_gh_wrapper(
     *,
     release_exists: bool,
     fail_release_create: bool = False,
+    create_creates_release_but_fails: bool = False,
     fail_release_upload: bool = False,
 ) -> None:
     write_executable(
@@ -110,15 +111,23 @@ set -euo pipefail
 printf 'gh %s\\n' "$*" >> "{log_file}"
 case "$1 $2" in
   release\\ view)
+    if [[ -f "{bin_dir / "release_created"}" ]]; then
+      exit 0
+    fi
     if [[ "{str(release_exists).lower()}" == "true" ]]; then
       exit 0
     fi
     exit 1
     ;;
   release\\ create)
+    if [[ "{str(create_creates_release_but_fails).lower()}" == "true" ]]; then
+      touch "{bin_dir / "release_created"}"
+      exit 1
+    fi
     if [[ "{str(fail_release_create).lower()}" == "true" ]]; then
       exit 1
     fi
+    touch "{bin_dir / "release_created"}"
     exit 0
     ;;
   release\\ upload)
@@ -127,7 +136,11 @@ case "$1 $2" in
     fi
     exit 0
     ;;
-  release\\ delete|release\\ edit)
+  release\\ delete)
+    rm -f "{bin_dir / "release_created"}"
+    exit 0
+    ;;
+  release\\ edit)
     exit 0
     ;;
 esac
@@ -151,6 +164,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
         publish_to_default_branch: bool = False,
         default_branch: str = "main",
         fail_release_create: bool = False,
+        create_creates_release_but_fails: bool = False,
         fail_release_upload: bool = False,
         fail_push_default_branch: bool = False,
     ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
@@ -173,6 +187,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
             command_log,
             release_exists=release_exists,
             fail_release_create=fail_release_create,
+            create_creates_release_but_fails=create_creates_release_but_fails,
             fail_release_upload=fail_release_upload,
         )
 
@@ -334,6 +349,62 @@ class PublishReleaseRepairTests(unittest.TestCase):
         self.assertIn("git push origin HEAD:refs/heads/main", commands)
         self.assertNotIn("gh release delete 1.2.3", commands)
         self.assertNotIn("git push origin :refs/tags/1.2.3", commands)
+
+    def test_alpha_create_adopts_release_and_syncs_metadata_when_create_fails_with_existing_remote_release(self) -> None:
+        completed, temp_root, command_log = self.run_publish(
+            "1.2.3-alpha.1",
+            "alpha",
+            remote_tag_exists=False,
+            local_tag_exists=False,
+            release_exists=False,
+            release_action="create",
+            create_creates_release_but_fails=True,
+        )
+
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("gh release create 1.2.3-alpha.1", commands)
+        self.assertIn("gh release edit 1.2.3-alpha.1", commands)
+        self.assertIn("gh release upload 1.2.3-alpha.1", commands)
+        self.assertNotIn("gh release delete 1.2.3-alpha.1", commands)
+        self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
+
+    def test_alpha_create_rolls_back_adopted_release_when_upload_fails(self) -> None:
+        completed, temp_root, command_log = self.run_publish(
+            "1.2.3-alpha.1",
+            "alpha",
+            remote_tag_exists=False,
+            local_tag_exists=False,
+            release_exists=False,
+            release_action="create",
+            create_creates_release_but_fails=True,
+            fail_release_upload=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("gh release create 1.2.3-alpha.1", commands)
+        self.assertIn("gh release edit 1.2.3-alpha.1", commands)
+        self.assertIn("gh release upload 1.2.3-alpha.1", commands)
+        self.assertIn("gh release delete 1.2.3-alpha.1 --yes --repo SPMForge/MoltenVK", commands)
+        self.assertIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
+
+    def test_alpha_create_preserves_concurrent_release_and_tag_when_create_fails_and_release_already_existed(self) -> None:
+        completed, temp_root, command_log = self.run_publish(
+            "1.2.3-alpha.1",
+            "alpha",
+            remote_tag_exists=False,
+            local_tag_exists=False,
+            release_exists=True,
+            release_action="create",
+            fail_release_create=True,
+        )
+
+        self.assertNotEqual(completed.returncode, 0)
+        commands = command_log.read_text(encoding="utf-8")
+        self.assertIn("gh release create 1.2.3-alpha.1", commands)
+        self.assertNotIn("gh release delete 1.2.3-alpha.1", commands)
+        self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
 
 
 if __name__ == "__main__":

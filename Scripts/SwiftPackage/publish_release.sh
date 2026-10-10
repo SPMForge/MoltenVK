@@ -57,6 +57,10 @@ remote_tag_exists() {
     git ls-remote --exit-code --tags origin "refs/tags/${TARGET_VERSION}" >/dev/null 2>&1
 }
 
+remote_release_exists() {
+    gh release view "$TARGET_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1
+}
+
 create_release_tag() {
     if remote_tag_exists; then
         fail "Package tag ${TARGET_VERSION} already exists on origin."
@@ -127,7 +131,17 @@ publish_release_metadata() {
     fi
 
     if [[ "$RELEASE_ACTION" == "create" ]]; then
-        run_with_retry gh release create "${release_args[@]}" --verify-tag
+        if run_with_retry gh release create "${release_args[@]}" --verify-tag; then
+            created_new_release="true"
+        else
+            if [[ "$release_existed_before_publish" == "false" ]] && remote_release_exists; then
+                printf 'warning: Release create returned an error but release %s exists on remote; adopting and ensuring metadata is synced...\n' "$TARGET_VERSION" >&2
+                created_new_release="true"
+                run_with_retry gh release edit "${release_args[@]}"
+            else
+                return 1
+            fi
+        fi
     else
         run_with_retry gh release edit "${release_args[@]}"
     fi
@@ -155,14 +169,19 @@ headers_zip_path="$RELEASE_ASSETS_DIR/$(headers_release_archive_name "$TARGET_VE
 
 created_new_remote_tag="false"
 created_new_release="false"
+release_existed_before_publish="false"
 cleanup_on_error() {
     if [[ "$created_new_release" == "true" ]]; then
         printf 'warning: Release publication failed; deleting incomplete release %s from GitHub...\n' "$TARGET_VERSION" >&2
         gh release delete "$TARGET_VERSION" --yes --repo "$GITHUB_REPOSITORY" || true
     fi
     if [[ "$created_new_remote_tag" == "true" ]]; then
-        printf 'warning: Release publication failed; rolling back newly created tag %s from origin...\n' "$TARGET_VERSION" >&2
-        git push origin ":refs/tags/${TARGET_VERSION}" || true
+        if remote_release_exists && [[ "$created_new_release" != "true" ]]; then
+            printf 'warning: Preserving remote tag %s because an external release exists for it.\n' "$TARGET_VERSION" >&2
+        else
+            printf 'warning: Release publication failed; rolling back newly created tag %s from origin...\n' "$TARGET_VERSION" >&2
+            git push origin ":refs/tags/${TARGET_VERSION}" || true
+        fi
     fi
 }
 trap cleanup_on_error ERR
@@ -198,10 +217,10 @@ else
     release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
 fi
 
-publish_release_metadata
-if [[ "$RELEASE_ACTION" == "create" ]]; then
-    created_new_release="true"
+if remote_release_exists; then
+    release_existed_before_publish="true"
 fi
+publish_release_metadata
 
 run_with_retry gh release upload "$TARGET_VERSION" \
     "$dynamic_zip_path" \

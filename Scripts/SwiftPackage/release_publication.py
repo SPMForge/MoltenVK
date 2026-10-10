@@ -289,7 +289,7 @@ def read_optional_tagged_text(tag: str, relative_path: str) -> str | None:
         check=False,
     )
     if fetch_completed.returncode != 0:
-        return None
+        fail(f"Unable to fetch tag {tag} while reading {relative_path}.")
 
     completed = run_command(["git", "show", f"refs/tags/{tag}:{relative_path}"], check=False)
     if completed.returncode == 0:
