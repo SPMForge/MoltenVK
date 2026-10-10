@@ -432,6 +432,78 @@ class ReleasePublicationTests(unittest.TestCase):
         self.assertEqual(plan.release_action, "edit")
         self.assertTrue(plan.metadata_needs_repair)
 
+    def test_alpha_latest_mints_next_version_when_incomplete_highest_alpha_contract_drifts(self) -> None:
+        existing_version = "1.2.3-alpha.4"
+        next_version = "1.2.3-alpha.5"
+        original_remote_tags = module.list_remote_tag_names
+        original_release_tags = module.list_github_release_tags
+        original_fetch_release = module.fetch_github_release
+        original_latest_tag = module.fetch_latest_release_tag
+        original_read_tagged_text = module.read_optional_tagged_text
+        try:
+            module.list_remote_tag_names = lambda: [existing_version]
+            module.list_github_release_tags = lambda repo: []
+            module.fetch_github_release = lambda repo, tag: None
+            module.fetch_latest_release_tag = lambda repo: None
+            module.read_optional_tagged_text = lambda tag, relative_path: "// old Package.swift\n"
+
+            plan = module.resolve_release_plan(
+                selection_mode="latest",
+                release_channel="alpha",
+                upstream_ref="v1.2.3",
+                repo="SPMForge/MoltenVK",
+                rendered_package_swift="// new Package.swift\n",
+            )
+        finally:
+            module.list_remote_tag_names = original_remote_tags
+            module.list_github_release_tags = original_release_tags
+            module.fetch_github_release = original_fetch_release
+            module.fetch_latest_release_tag = original_latest_tag
+            module.read_optional_tagged_text = original_read_tagged_text
+
+        self.assertEqual(plan.target_version, next_version)
+        self.assertEqual(plan.build_version, existing_version)
+        self.assertEqual(plan.publication_mode, "create")
+        self.assertEqual(plan.release_action, "create")
+        self.assertFalse(plan.remote_tag_exists)
+        self.assertFalse(plan.release_exists)
+
+    def test_alpha_latest_repairs_when_incomplete_highest_alpha_contract_matches(self) -> None:
+        existing_version = "1.2.3-alpha.4"
+        rendered_manifest = "// matching Package.swift\n"
+        original_remote_tags = module.list_remote_tag_names
+        original_release_tags = module.list_github_release_tags
+        original_fetch_release = module.fetch_github_release
+        original_latest_tag = module.fetch_latest_release_tag
+        original_read_tagged_text = module.read_optional_tagged_text
+        try:
+            module.list_remote_tag_names = lambda: [existing_version]
+            module.list_github_release_tags = lambda repo: []
+            module.fetch_github_release = lambda repo, tag: None
+            module.fetch_latest_release_tag = lambda repo: None
+            module.read_optional_tagged_text = lambda tag, relative_path: rendered_manifest
+
+            plan = module.resolve_release_plan(
+                selection_mode="latest",
+                release_channel="alpha",
+                upstream_ref="v1.2.3",
+                repo="SPMForge/MoltenVK",
+                rendered_package_swift=rendered_manifest,
+            )
+        finally:
+            module.list_remote_tag_names = original_remote_tags
+            module.list_github_release_tags = original_release_tags
+            module.fetch_github_release = original_fetch_release
+            module.fetch_latest_release_tag = original_latest_tag
+            module.read_optional_tagged_text = original_read_tagged_text
+
+        self.assertEqual(plan.target_version, existing_version)
+        self.assertEqual(plan.build_version, existing_version)
+        self.assertEqual(plan.publication_mode, "repair")
+        self.assertEqual(plan.release_action, "create")
+        self.assertTrue(plan.remote_tag_exists)
+        self.assertFalse(plan.release_exists)
+
     def test_stable_skip_when_existing_release_is_complete(self) -> None:
         version = "1.2.3"
         original_remote_tags = module.list_remote_tag_names

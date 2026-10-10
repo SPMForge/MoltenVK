@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$ROOT_DIR/Scripts/SwiftPackage/common.sh"
@@ -89,6 +89,27 @@ resolve_release_assets_dir() {
     printf '%s\n' "$PREPARED_WORKSPACE_ROOT/Artifacts"
 }
 
+run_with_retry() {
+    local max_attempts="${MVK_RETRY_MAX_ATTEMPTS:-3}"
+    local delay="${MVK_RETRY_DELAY_SECONDS:-2}"
+    local attempt=1
+    while true; do
+        if "$@"; then
+            return 0
+        fi
+        if (( attempt >= max_attempts )); then
+            return 1
+        fi
+        printf 'warning: Command failed (attempt %d/%d): %s. Retrying in %ds...\n' \
+            "$attempt" "$max_attempts" "$*" "$delay" >&2
+        if (( delay > 0 )); then
+            sleep "$delay"
+        fi
+        delay=$(( delay * 2 ))
+        attempt=$(( attempt + 1 ))
+    done
+}
+
 publish_release_metadata() {
     local release_args=(
         "$TARGET_VERSION"
@@ -106,9 +127,9 @@ publish_release_metadata() {
     fi
 
     if [[ "$RELEASE_ACTION" == "create" ]]; then
-        gh release create "${release_args[@]}" --verify-tag
+        run_with_retry gh release create "${release_args[@]}" --verify-tag
     else
-        gh release edit "${release_args[@]}"
+        run_with_retry gh release edit "${release_args[@]}"
     fi
 }
 
@@ -131,6 +152,20 @@ headers_zip_path="$RELEASE_ASSETS_DIR/$(headers_release_archive_name "$TARGET_VE
 [[ -f "$dynamic_checksum_path" ]] || fail "Missing dynamic release checksum: $dynamic_checksum_path"
 [[ -f "$static_checksum_path" ]] || fail "Missing static release checksum: $static_checksum_path"
 [[ -f "$headers_checksum_path" ]] || fail "Missing headers release checksum: $headers_checksum_path"
+
+created_new_remote_tag="false"
+created_new_release="false"
+cleanup_on_error() {
+    if [[ "$created_new_release" == "true" ]]; then
+        printf 'warning: Release publication failed; deleting incomplete release %s from GitHub...\n' "$TARGET_VERSION" >&2
+        gh release delete "$TARGET_VERSION" --yes --repo "$GITHUB_REPOSITORY" || true
+    fi
+    if [[ "$created_new_remote_tag" == "true" ]]; then
+        printf 'warning: Release publication failed; rolling back newly created tag %s from origin...\n' "$TARGET_VERSION" >&2
+        git push origin ":refs/tags/${TARGET_VERSION}" || true
+    fi
+}
+trap cleanup_on_error ERR
 
 release_commit=""
 if [[ "$RELEASE_ACTION" == "create" ]]; then
@@ -156,6 +191,7 @@ if [[ "$RELEASE_ACTION" == "create" ]]; then
         fi
 
         create_release_tag
+        created_new_remote_tag="true"
     fi
 else
     git fetch --force origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
@@ -163,7 +199,11 @@ else
 fi
 
 publish_release_metadata
-gh release upload "$TARGET_VERSION" \
+if [[ "$RELEASE_ACTION" == "create" ]]; then
+    created_new_release="true"
+fi
+
+run_with_retry gh release upload "$TARGET_VERSION" \
     "$dynamic_zip_path" \
     "$dynamic_checksum_path" \
     "$static_zip_path" \
@@ -176,6 +216,10 @@ gh release upload "$TARGET_VERSION" \
 if [[ "$PUBLISH_TO_DEFAULT_BRANCH" == "true" ]]; then
     push_default_branch "$release_commit"
 fi
+
+created_new_remote_tag="false"
+created_new_release="false"
+trap - ERR
 
 if [[ -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE" ]]; then
     rm -f "$MOLTENVK_PREPARED_WORKSPACE_RECORD_FILE"
