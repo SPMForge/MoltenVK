@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import subprocess
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -31,6 +32,14 @@ def main() -> int:
     gitignore = read_text(REPO_ROOT / ".gitignore")
     checksums_dir = REPO_ROOT / "SwiftPackage" / "checksums"
 
+    if (REPO_ROOT / ".git").exists():
+        tracked_artifacts = subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "ls-files", "Artifacts"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout.strip()
+        require(not tracked_artifacts, "committed repository must not track Artifacts directory in Git")
     require(not (REPO_ROOT / "Artifacts").exists(), "committed repository must not track Artifacts directory")
     require("/Artifacts/" in gitignore or "Artifacts/" in gitignore, ".gitignore must ignore Artifacts/")
     require("!/Artifacts" not in gitignore, ".gitignore must not contain Artifacts whitelist exceptions")
@@ -40,6 +49,7 @@ def main() -> int:
     require("find Artifacts" not in publish_workflow, "publish workflow must not find checksums in Artifacts")
     require('mkdir -p "$GITHUB_WORKSPACE/Artifacts"' not in publish_workflow, "publish workflow must not restore checksums into Artifacts")
     require("SwiftPackage/checksums" in release_publication, "release publication planner must track checksums in SwiftPackage/checksums")
+    require("expected_tagged_file_paths" in release_publication, "release publication planner must export expected_tagged_file_paths")
 
     require("wrapper repo" in readme, "README must describe MoltenVK as a wrapper repo")
     require("render_local_dev_package_manifest.py" in readme, "README must document the explicit local-only manifest helper")

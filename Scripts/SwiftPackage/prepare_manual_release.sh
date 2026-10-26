@@ -56,5 +56,4 @@ cp "$prepared_workspace/Package.swift" "$ROOT_DIR/Package.swift"
 for relative_path in PackageVersion.txt ReleaseRepository.txt UpstreamRepository.txt UpstreamSourceRef.txt; do
     cp "$prepared_workspace/SwiftPackage/$relative_path" "$ROOT_DIR/SwiftPackage/$relative_path"
 done
-find "$ROOT_DIR/SwiftPackage/checksums" -maxdepth 1 -name 'MoltenVK*.checksum' -delete
 find "$prepared_workspace/Artifacts" -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$ROOT_DIR/SwiftPackage/checksums/" \;

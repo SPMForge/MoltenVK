@@ -723,6 +723,18 @@ class ReleasePublicationTests(unittest.TestCase):
         finally:
             module.run_command = original_run_command
 
+    def test_metadata_paths_and_expected_tagged_file_paths(self) -> None:
+        version = "1.2.3-alpha.9"
+        paths = module.metadata_paths_for_version(version)
+        self.assertEqual(paths, module.expected_tagged_file_paths(version))
+        self.assertIn("Package.swift", paths)
+        self.assertIn("SwiftPackage/PackageVersion.txt", paths)
+        self.assertIn(f"SwiftPackage/checksums/MoltenVK-{version}.xcframework.checksum", paths)
+        self.assertIn(f"SwiftPackage/checksums/MoltenVK-static-{version}.xcframework.checksum", paths)
+        self.assertIn(f"SwiftPackage/checksums/MoltenVKHeaders-{version}.checksum", paths)
+        for path in paths:
+            self.assertFalse(path.startswith("Artifacts/"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

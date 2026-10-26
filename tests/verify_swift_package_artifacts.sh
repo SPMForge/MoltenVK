@@ -35,15 +35,21 @@ assert_file "$STATIC_ZIP"
 assert_file "$STATIC_CHECKSUM"
 assert_file "$HEADERS_ZIP"
 assert_file "$HEADERS_CHECKSUM"
+assert_file "$ROOT_DIR/SwiftPackage/checksums/$(dynamic_release_checksum_name "$PACKAGE_VERSION")"
+assert_file "$ROOT_DIR/SwiftPackage/checksums/$(static_release_checksum_name "$PACKAGE_VERSION")"
+assert_file "$ROOT_DIR/SwiftPackage/checksums/$(headers_release_checksum_name "$PACKAGE_VERSION")"
 assert_file "$ROOT_DIR/Package.swift"
 assert_file "$MOLTENVK_MERGEABLE_VALIDATOR_PATH"
 
 swift package compute-checksum "$DYNAMIC_ZIP" >"$TMP_DIR/moltenvk.dynamic.checksum"
 diff -u "$DYNAMIC_CHECKSUM" "$TMP_DIR/moltenvk.dynamic.checksum"
+diff -u "$ROOT_DIR/SwiftPackage/checksums/$(dynamic_release_checksum_name "$PACKAGE_VERSION")" "$TMP_DIR/moltenvk.dynamic.checksum"
 swift package compute-checksum "$STATIC_ZIP" >"$TMP_DIR/moltenvk.static.checksum"
 diff -u "$STATIC_CHECKSUM" "$TMP_DIR/moltenvk.static.checksum"
+diff -u "$ROOT_DIR/SwiftPackage/checksums/$(static_release_checksum_name "$PACKAGE_VERSION")" "$TMP_DIR/moltenvk.static.checksum"
 swift package compute-checksum "$HEADERS_ZIP" >"$TMP_DIR/moltenvk.headers.checksum"
 diff -u "$HEADERS_CHECKSUM" "$TMP_DIR/moltenvk.headers.checksum"
+diff -u "$ROOT_DIR/SwiftPackage/checksums/$(headers_release_checksum_name "$PACKAGE_VERSION")" "$TMP_DIR/moltenvk.headers.checksum"
 
 plutil -p "$DYNAMIC_XCFRAMEWORK/Info.plist" >/dev/null
 validator_args=()
