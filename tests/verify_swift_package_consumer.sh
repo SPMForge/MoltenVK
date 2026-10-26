@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="${MVK_PACKAGE_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
-source "$ROOT_DIR/Scripts/SwiftPackage/common.sh"
+source "$ROOT_DIR/scripts/spm/common.sh"
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/moltenvk-consumer.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
@@ -48,17 +48,24 @@ run_consumer_builds_for_platform() {
             MERGED_BINARY_TYPE=automatic \
             build >"$release_log"
     )
+
+    if [[ "$platform_id" == "macos" ]]; then
+        (
+            cd "$TMP_DIR"
+            swift run --configuration release SmokeConsumer
+        )
+    fi
 }
 
 LOCAL_PACKAGE_ROOT="$TMP_DIR/LocalMoltenVKPackage"
 mkdir -p "$TMP_DIR/Sources/SmokeConsumer" "$LOCAL_PACKAGE_ROOT/Artifacts"
 cp -R "$ROOT_DIR/Artifacts/MoltenVK.xcframework" "$LOCAL_PACKAGE_ROOT/Artifacts/MoltenVK.xcframework"
-python3 "$ROOT_DIR/Scripts/SwiftPackage/render_local_dev_package_manifest.py" \
+python3 "$ROOT_DIR/scripts/spm/render_local_dev_package_manifest.py" \
     --output "$LOCAL_PACKAGE_ROOT/Package.swift"
 
-SCHEME_NAME="SmokeConsumer-Package"
+SCHEME_NAME="SmokeConsumer"
 PLATFORM_LINES="$(
-    python3 - "$ROOT_DIR/Scripts/SwiftPackage/platform_config.py" <<'PY'
+    python3 - "$ROOT_DIR/scripts/spm/platform_config.py" <<'PY'
 import importlib.util
 import sys
 from pathlib import Path
@@ -86,22 +93,44 @@ let package = Package(
     platforms: [
 ${PLATFORM_LINES}
     ],
+    products: [
+        .executable(name: "SmokeConsumer", targets: ["SmokeConsumer"]),
+    ],
     dependencies: [
         .package(name: "MoltenVK", path: "$LOCAL_PACKAGE_ROOT"),
     ],
     targets: [
-        .target(
+        .executableTarget(
             name: "SmokeConsumer",
             dependencies: [
                 .product(name: "MoltenVK", package: "MoltenVK"),
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "-Xlinker", "-rpath", "-Xlinker", "@loader_path",
+                    "-Xlinker", "-rpath", "-Xlinker", "@loader_path/PackageFrameworks",
+                ]),
             ]
         ),
     ]
 )
 EOF
 
-cat >"$TMP_DIR/Sources/SmokeConsumer/SmokeConsumer.swift" <<'EOF'
+cat >"$TMP_DIR/Sources/SmokeConsumer/main.swift" <<'EOF'
+import Foundation
 import MoltenVK
+
+var apiVersion: UInt32 = 0
+let res = vkEnumerateInstanceVersion(&apiVersion)
+guard res == VK_SUCCESS, apiVersion != 0 else {
+    fputs("error: Failed to query Vulkan instance version from MoltenVK (code=\(res))\n", stderr)
+    exit(1)
+}
+
+let major = (apiVersion >> 22) & 0x7F
+let minor = (apiVersion >> 12) & 0x3FF
+let patch = apiVersion & 0xFFF
+print("✅ [Swift SPM Consumer] MoltenVK verified! Vulkan API: \(major).\(minor).\(patch)")
 EOF
 
 while IFS= read -r platform_id; do

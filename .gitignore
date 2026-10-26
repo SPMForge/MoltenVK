@@ -1,6 +1,7 @@
 # MoltenVK runtime build
 /Package
 /Artifacts/
+/config/.prepared-workspace-path
 /SwiftPackage/.prepared-workspace-path
 
 # MoltenVK dependencies

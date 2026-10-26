@@ -25,7 +25,7 @@ Package contract
 - Additional release assets:
   - `MoltenVK-static-<version>.xcframework.zip`
   - `MoltenVKHeaders-<version>.zip`
-- Local build directory: `Artifacts/` (strictly an ignored local/ephemeral build output directory, never checked into the repository; tracked release metadata checksums are maintained under `SwiftPackage/checksums/`)
+- Local build directory: `Artifacts/` (strictly an ignored local/ephemeral build output directory, never checked into the repository; tracked release metadata checksums are maintained under `config/checksums/`)
 - Current generated manifest path: `Package.swift`
 - Runtime dependency model: `none`
   - The distributed `MoltenVK.framework` depends only on its own install name and Apple system frameworks/libraries such as Metal, Foundation, UIKit/AppKit, IOSurface, libc++, and libSystem.
@@ -35,17 +35,18 @@ Package contract
 Source acquisition contract
 ---------------------------
 
-- Upstream repository: `SwiftPackage/UpstreamRepository.txt`
-- Upstream source ref used by the current package metadata: `SwiftPackage/UpstreamSourceRef.txt`
-- Release asset host repository: `SwiftPackage/ReleaseRepository.txt`
-- Published package version: `SwiftPackage/PackageVersion.txt`
+- Upstream repository: `config/UpstreamRepository.txt`
+- Upstream source ref used by the current package metadata: `config/UpstreamSourceRef.txt`
+- Release asset host repository: `config/ReleaseRepository.txt`
+- Published package version: `config/PackageVersion.txt`
+- Platform matrix and deployment floors: `config/platforms.json`
 
 Build and release flow
 ----------------------
 
-- `Scripts/SwiftPackage/build_swift_package_dependencies.sh`
+- `scripts/spm/build_swift_package_dependencies.sh`
   - exports the requested upstream snapshot and prewarms external dependencies there
-- `Scripts/SwiftPackage/build_swift_package.sh`
+- `scripts/spm/build_swift_package.sh`
   - exports the requested upstream snapshot
   - patches the exported `MoltenVK.xcodeproj` so tvOS mergeable framework archives do not inherit the upstream `-ld_classic` linker mode
   - builds mergeable dynamic MoltenVK archives
@@ -55,7 +56,7 @@ Build and release flow
   - assembles XCFramework artifacts
   - computes checksums from the final zip archives
   - renders `Package.swift`
-- `Scripts/SwiftPackage/publish_release.sh`
+- `scripts/spm/publish_release.sh`
   - creates a `release/<package_tag>` commit containing the generated metadata for that package version
   - Alpha publishes create and tag a release/ commit without updating the default branch
   - the default branch can be fast-forwarded only from the manual stable path by setting `publish_to_default_branch=true`
@@ -96,7 +97,12 @@ When integrating this package into a Release configuration that enables merged b
 
 For package consumers, the framework slices carry the public headers and module map internally, so the SwiftPM import surface is defined by the distributed `MoltenVK.xcframework`, not by wrapper-repo checkout headers.
 
-For local smoke tests or operator-only verification against a freshly built checkout artifact, use the explicit local-only manifest helper `Scripts/SwiftPackage/render_local_dev_package_manifest.py` instead of changing the committed `Package.swift`.
+For local smoke tests or operator-only verification against a freshly built checkout artifact, use the explicit local-only manifest helper `scripts/spm/render_local_dev_package_manifest.py` instead of changing the committed `Package.swift`.
+
+Documentation
+-------------
+
+- Wrapper package contract and workflow guide: [docs/how-to-build/swiftpm-binary-package.md](docs/how-to-build/swiftpm-binary-package.md)
 
 ## License
 
@@ -104,3 +110,11 @@ This repository and its distributed binary frameworks are licensed under the **A
 
 ### Trademarks
 Vulkan and the Vulkan logo are registered trademarks of the Khronos Group Inc.
+
+## Release Input Identity
+
+New releases record immutable upstream and wrapper input identity in
+`config/release-inputs.json`. Scheduled and manual alpha use the same reuse/evaluate
+policy and repository publication lock. See the
+[repeat-publication SOP](docs/how-to-build/swiftpm-binary-package.md#immutable-source-and-repeat-publication-sop)
+for source pinning, legacy tags, strict repair checks, and verification boundaries.

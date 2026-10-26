@@ -23,6 +23,10 @@ permissions:
 
 
 
+concurrency:
+  group: spm-package-publication-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   verify:
     name: Verify publish pipeline
@@ -40,17 +44,13 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Verify release publication logic
+      - name: Run unit tests
         run: |
-          python3 ./tests/verify_compute_next_alpha_version.py
-          python3 ./tests/verify_release_publication.py
-          python3 ./tests/verify_publish_release_repair.py
+          python3 -m unittest discover -s tests -p 'test_*.py'
 
       - name: Verify wrapper contract
         run: |
-          python3 ./tests/verify_platform_config.py
-          python3 ./tests/verify_validate_mergeable_xcframework.py
-          python3 ./tests/verify_sop_conformance.py
+          python3 ./scripts/verify_sop_conformance.py
           ./tests/verify_swift_package_integration.sh
 
   resolve:
@@ -62,6 +62,7 @@ jobs:
         shell: bash
     outputs:
       upstream_ref: ${{ steps.plan.outputs.upstream_ref }}
+      upstream_commit: ${{ steps.release_inputs.outputs.upstream_commit }}
       target_version: ${{ steps.plan.outputs.target_version }}
       build_version: ${{ steps.plan.outputs.build_version }}
       publication_mode: ${{ steps.plan.outputs.publication_mode }}
@@ -93,7 +94,7 @@ jobs:
           INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
           INPUT_PUBLISH_TO_DEFAULT_BRANCH: ${{ inputs.publish_to_default_branch }}
         run: |
-          source ./Scripts/SwiftPackage/source_acquisition.sh
+          source ./scripts/spm/source_acquisition.sh
 
           selection_mode="${INPUT_SELECTION_MODE}"
           requested_upstream_ref="${INPUT_UPSTREAM_REF}"
@@ -142,6 +143,11 @@ jobs:
           echo "ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${resolved_upstream_ref}"
 
+      - name: Capture immutable release inputs
+        id: release_inputs
+        run: |
+          python3 scripts/release_inputs.py capture --upstream-tag "${{ steps.upstream.outputs.ref }}" --github-output "$GITHUB_OUTPUT"
+
       - name: Resolve publication mode
         id: plan
         env:
@@ -150,7 +156,7 @@ jobs:
           INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
           RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: |
-          python3 ./Scripts/SwiftPackage/release_publication.py plan \
+          python3 ./scripts/spm/release_publication.py plan \
             --selection-mode "${INPUT_SELECTION_MODE}" \
             --release-channel "${INPUT_RELEASE_CHANNEL}" \
             --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
@@ -159,10 +165,11 @@ jobs:
 
   build:
     name: Build release artifacts
-    needs: resolve
-    if: needs.resolve.outputs.publication_mode != 'skip'
+    needs: [verify, resolve]
+    if: needs.resolve.outputs.publication_mode != 'skip' && needs.resolve.outputs.publication_mode != 'metadata'
     runs-on: macos-15
     env:
+      SPMFORGE_EXPECTED_UPSTREAM_COMMIT: ${{ needs.resolve.outputs.upstream_commit }}
       MVK_ENABLE_CCACHE: "1"
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 2G
@@ -201,7 +208,7 @@ jobs:
       - name: Preflight Apple platforms
         env:
           MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
-        run: ./Scripts/SwiftPackage/preflight_apple_platforms.sh
+        run: ./scripts/spm/preflight_apple_platforms.sh
 
       - name: Prep cache key
         id: prep
@@ -220,24 +227,24 @@ jobs:
           )"
           dependency_cache_inputs_hash="$(
             git ls-files --stage -- \
-              'Scripts/SwiftPackage/build_swift_package_dependencies.sh' \
-              'Scripts/SwiftPackage/common.sh' \
-              'Scripts/SwiftPackage/platform_config.py' \
-              'Scripts/SwiftPackage/prepare_upstream_workspace.py' \
-              'Scripts/SwiftPackage/source_acquisition.sh' \
-              'SwiftPackage/platforms.json' \
+              'scripts/spm/build_swift_package_dependencies.sh' \
+              'scripts/spm/common.sh' \
+              'scripts/spm/platform_config.py' \
+              'scripts/spm/prepare_upstream_workspace.py' \
+              'scripts/spm/source_acquisition.sh' \
+              'config/platforms.json' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
           compiler_cache_inputs_hash="$(
             git ls-files --stage -- \
-              'Scripts/SwiftPackage/build_swift_package.sh' \
-              'Scripts/SwiftPackage/common.sh' \
-              'Scripts/SwiftPackage/materialize_public_headers.py' \
-              'Scripts/SwiftPackage/platform_config.py' \
-              'Scripts/SwiftPackage/prepare_upstream_workspace.py' \
-              'Scripts/SwiftPackage/source_acquisition.sh' \
-              'SwiftPackage/platforms.json' \
+              'scripts/spm/build_swift_package.sh' \
+              'scripts/spm/common.sh' \
+              'scripts/spm/materialize_public_headers.py' \
+              'scripts/spm/platform_config.py' \
+              'scripts/spm/prepare_upstream_workspace.py' \
+              'scripts/spm/source_acquisition.sh' \
+              'config/platforms.json' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
@@ -278,7 +285,7 @@ jobs:
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         env:
           MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
-        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+        run: ./scripts/spm/build_swift_package_dependencies.sh
 
       - name: Prepare release artifacts
         id: prepare
@@ -288,15 +295,15 @@ jobs:
           MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
           RELEASE_KIND: ${{ inputs.release_channel }}
         run: |
-          rm -f "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path"
+          rm -f "$GITHUB_WORKSPACE/config/.prepared-workspace-path"
 
           if [[ "${RELEASE_KIND}" == "alpha" ]]; then
-            ./Scripts/SwiftPackage/prepare_alpha_release.sh "$TARGET_VERSION"
+            ./scripts/spm/prepare_alpha_release.sh "$TARGET_VERSION"
           else
-            ./Scripts/SwiftPackage/prepare_manual_release.sh "$TARGET_VERSION"
+            ./scripts/spm/prepare_manual_release.sh "$TARGET_VERSION"
           fi
 
-          workspace_root="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path")"
+          workspace_root="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/config/.prepared-workspace-path")"
           [[ -n "$workspace_root" ]] || {
             echo "error: prepared workspace path was empty" >&2
             exit 1
@@ -307,14 +314,29 @@ jobs:
           }
           echo "workspace_root=$workspace_root" >> "$GITHUB_OUTPUT"
 
+      - name: Validate Swift Package manifest
+        run: |
+          cd "${{ steps.prepare.outputs.workspace_root }}"
+          swift package dump-package >/dev/null
+
+      - name: Verify generated package assets
+        env:
+          MVK_PACKAGE_ROOT: ${{ steps.prepare.outputs.workspace_root }}
+        run: ./tests/verify_swift_package_artifacts.sh
+
+      - name: Verify consumer smoke tests
+        env:
+          MVK_PACKAGE_ROOT: ${{ steps.prepare.outputs.workspace_root }}
+        run: ./tests/verify_swift_package_consumer.sh
+
       - name: Show ccache statistics
         if: always()
-        run: ./Scripts/SwiftPackage/report_ccache_stats.sh "Publish build ccache statistics"
+        run: ./scripts/spm/report_ccache_stats.sh "Publish build ccache statistics"
 
       - name: Assess compiler cache payload
         id: ccache-payload
         if: ${{ steps.cache-compiler-restore.conclusion == 'success' && steps.prepare.conclusion == 'success' }}
-        run: ./Scripts/SwiftPackage/check_ccache_payload.sh .ccache 262144
+        run: ./scripts/spm/check_ccache_payload.sh .ccache 262144
 
       - name: Save compiler cache
         if: >-
@@ -329,6 +351,10 @@ jobs:
           path: .ccache
           key: ${{ steps.cache-compiler-restore.outputs.cache-primary-key }}
 
+      - name: Record built release inputs
+        run: |
+          python3 scripts/release_inputs.py capture --upstream-tag "${{ needs.resolve.outputs.upstream_ref }}" --upstream-commit "${{ needs.resolve.outputs.upstream_commit }}"
+
       - name: Stage release payload
         id: payload
         env:
@@ -337,16 +363,17 @@ jobs:
           payload_root="$RUNNER_TEMP/release-payload"
           rm -rf "$payload_root"
           mkdir -p \
-            "$payload_root/repo/SwiftPackage/checksums" \
-            "$payload_root/repo/SwiftPackage" \
+            "$payload_root/repo/config/checksums" \
+            "$payload_root/repo/config" \
             "$payload_root/release-assets"
 
           cp Package.swift "$payload_root/repo/Package.swift"
-          cp SwiftPackage/PackageVersion.txt "$payload_root/repo/SwiftPackage/PackageVersion.txt"
-          cp SwiftPackage/ReleaseRepository.txt "$payload_root/repo/SwiftPackage/ReleaseRepository.txt"
-          cp SwiftPackage/UpstreamRepository.txt "$payload_root/repo/SwiftPackage/UpstreamRepository.txt"
-          cp SwiftPackage/UpstreamSourceRef.txt "$payload_root/repo/SwiftPackage/UpstreamSourceRef.txt"
-          find SwiftPackage/checksums -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$payload_root/repo/SwiftPackage/checksums/" \;
+          cp config/PackageVersion.txt "$payload_root/repo/config/PackageVersion.txt"
+          cp config/ReleaseRepository.txt "$payload_root/repo/config/ReleaseRepository.txt"
+          cp config/UpstreamRepository.txt "$payload_root/repo/config/UpstreamRepository.txt"
+          cp config/UpstreamSourceRef.txt "$payload_root/repo/config/UpstreamSourceRef.txt"
+          cp config/release-inputs.json "$payload_root/repo/config/release-inputs.json"
+          find config/checksums -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$payload_root/repo/config/checksums/" \;
           cp "$WORKSPACE_ROOT/Artifacts/"*.zip "$payload_root/release-assets/"
 
       - name: Upload release payload
@@ -362,7 +389,7 @@ jobs:
     needs:
       - resolve
       - build
-    if: always() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.resolve.outputs.publication_mode != 'skip' || (inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.remote_tag_exists == 'true'))
+    if: always() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.resolve.outputs.publication_mode != 'skip' || (inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.remote_tag_exists == 'true')) && needs.resolve.outputs.publication_mode != 'metadata'
     runs-on: macos-15
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
@@ -392,12 +419,13 @@ jobs:
         if: needs.resolve.outputs.publication_mode != 'skip'
         run: |
           cp "$RUNNER_TEMP/release-payload/repo/Package.swift" "$GITHUB_WORKSPACE/Package.swift"
-          mkdir -p "$GITHUB_WORKSPACE/SwiftPackage/checksums"
-          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/checksums/"* "$GITHUB_WORKSPACE/SwiftPackage/checksums/"
-          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/PackageVersion.txt" "$GITHUB_WORKSPACE/SwiftPackage/PackageVersion.txt"
-          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/ReleaseRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/ReleaseRepository.txt"
-          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamRepository.txt"
-          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamSourceRef.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamSourceRef.txt"
+          mkdir -p "$GITHUB_WORKSPACE/config/checksums"
+          cp "$RUNNER_TEMP/release-payload/repo/config/checksums/"* "$GITHUB_WORKSPACE/config/checksums/"
+          cp "$RUNNER_TEMP/release-payload/repo/config/PackageVersion.txt" "$GITHUB_WORKSPACE/config/PackageVersion.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/config/ReleaseRepository.txt" "$GITHUB_WORKSPACE/config/ReleaseRepository.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/config/UpstreamRepository.txt" "$GITHUB_WORKSPACE/config/UpstreamRepository.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/config/UpstreamSourceRef.txt" "$GITHUB_WORKSPACE/config/UpstreamSourceRef.txt"
+          cp "$RUNNER_TEMP/release-payload/repo/config/release-inputs.json" "$GITHUB_WORKSPACE/config/release-inputs.json"
 
       - name: Resolve final publication mode from rendered package contract
         id: final_plan
@@ -408,7 +436,7 @@ jobs:
           INPUT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
           RESOLVED_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: |
-          python3 ./Scripts/SwiftPackage/release_publication.py plan \
+          python3 ./scripts/spm/release_publication.py plan \
             --selection-mode "${INPUT_SELECTION_MODE}" \
             --release-channel "${INPUT_RELEASE_CHANNEL}" \
             --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
@@ -424,7 +452,7 @@ jobs:
           TARGET_VERSION: ${{ steps.final_plan.outputs.target_version }}
           RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-payload/release-assets
         run: |
-          python3 ./Scripts/SwiftPackage/release_publication.py retag-workspace \
+          python3 ./scripts/spm/release_publication.py retag-workspace \
             --source-version "$BUILD_VERSION" \
             --target-version "$TARGET_VERSION" \
             --workspace-root "$GITHUB_WORKSPACE" \
@@ -436,7 +464,7 @@ jobs:
           TARGET_VERSION: ${{ steps.final_plan.outputs.target_version }}
         run: |
           git fetch --force origin "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
-          python3 ./Scripts/SwiftPackage/release_publication.py assert-tagged-state \
+          python3 ./scripts/spm/release_publication.py assert-tagged-state \
             --tag "$TARGET_VERSION" \
             --workspace-root "$GITHUB_WORKSPACE"
 
@@ -450,7 +478,7 @@ jobs:
           MVK_RELEASE_ASSETS_DIR: ${{ runner.temp }}/release-payload/release-assets
           MVK_DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
           MVK_PUBLISH_TO_DEFAULT_BRANCH: ${{ inputs.publish_to_default_branch }}
-        run: ./Scripts/SwiftPackage/publish_release.sh "$TARGET_VERSION" "$RELEASE_KIND"
+        run: ./scripts/spm/publish_release.sh "$TARGET_VERSION" "$RELEASE_KIND"
 
       - name: Optionally fast-forward default branch to existing stable tag
         if: inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.publication_mode == 'skip'
@@ -462,3 +490,33 @@ jobs:
             "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
           release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
           git push origin "${release_commit}:refs/heads/${DEFAULT_BRANCH}"
+
+  repair_existing_metadata:
+    name: Repair complete release metadata without rebuilding
+    needs: [verify, resolve]
+    if: needs.resolve.result == 'success' && needs.resolve.outputs.publication_mode == 'metadata'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Normalize existing release metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_VERSION: ${{ needs.resolve.outputs.target_version }}
+          RELEASE_CHANNEL: ${{ inputs.release_channel }}
+          PROMOTE_STABLE: ${{ inputs.publish_to_default_branch }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
+        run: |
+          set -euo pipefail
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TARGET_VERSION}" --jq '.id')"
+          if [[ "$RELEASE_CHANNEL" == "stable" ]]; then
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" -F draft=false -F prerelease=false >/dev/null
+          else
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" -F draft=false -F prerelease=true -F make_latest=false >/dev/null
+          fi
+          if [[ "$RELEASE_CHANNEL" == "stable" && "$PROMOTE_STABLE" == "true" ]]; then
+            git fetch origin "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}" "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
+            release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
+            git push origin "${release_commit}:refs/heads/${DEFAULT_BRANCH}"
+          fi

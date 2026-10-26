@@ -63,7 +63,7 @@ jobs:
       - name: Resolve upstream ref for validation
         id: upstream
         run: |
-          source ./Scripts/SwiftPackage/source_acquisition.sh
+          source ./scripts/spm/source_acquisition.sh
           if [[ -n "${{ inputs.upstream_ref }}" ]]; then
             resolved_ref="$(resolve_requested_or_latest_upstream_ref "${{ inputs.upstream_ref }}")"
           else
@@ -75,7 +75,7 @@ jobs:
       - name: Preflight Apple platforms
         env:
           MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
-        run: ./Scripts/SwiftPackage/preflight_apple_platforms.sh
+        run: ./scripts/spm/preflight_apple_platforms.sh
 
       - name: Prep cache key
         id: prep
@@ -94,24 +94,24 @@ jobs:
           )"
           dependency_cache_inputs_hash="$(
             git ls-files --stage -- \
-              'Scripts/SwiftPackage/build_swift_package_dependencies.sh' \
-              'Scripts/SwiftPackage/common.sh' \
-              'Scripts/SwiftPackage/platform_config.py' \
-              'Scripts/SwiftPackage/prepare_upstream_workspace.py' \
-              'Scripts/SwiftPackage/source_acquisition.sh' \
-              'SwiftPackage/platforms.json' \
+              'scripts/spm/build_swift_package_dependencies.sh' \
+              'scripts/spm/common.sh' \
+              'scripts/spm/platform_config.py' \
+              'scripts/spm/prepare_upstream_workspace.py' \
+              'scripts/spm/source_acquisition.sh' \
+              'config/platforms.json' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
           compiler_cache_inputs_hash="$(
             git ls-files --stage -- \
-              'Scripts/SwiftPackage/build_swift_package.sh' \
-              'Scripts/SwiftPackage/common.sh' \
-              'Scripts/SwiftPackage/materialize_public_headers.py' \
-              'Scripts/SwiftPackage/platform_config.py' \
-              'Scripts/SwiftPackage/prepare_upstream_workspace.py' \
-              'Scripts/SwiftPackage/source_acquisition.sh' \
-              'SwiftPackage/platforms.json' \
+              'scripts/spm/build_swift_package.sh' \
+              'scripts/spm/common.sh' \
+              'scripts/spm/materialize_public_headers.py' \
+              'scripts/spm/platform_config.py' \
+              'scripts/spm/prepare_upstream_workspace.py' \
+              'scripts/spm/source_acquisition.sh' \
+              'config/platforms.json' \
             | shasum -a 256 \
             | awk '{print $1}'
           )"
@@ -152,7 +152,7 @@ jobs:
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         env:
           MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
-        run: ./Scripts/SwiftPackage/build_swift_package_dependencies.sh
+        run: ./scripts/spm/build_swift_package_dependencies.sh
 
       - name: Build Swift Package artifacts
         id: build
@@ -160,10 +160,10 @@ jobs:
           SKIP_DEPENDENCY_FETCH: "1"
           MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: |
-          rm -f "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path"
-          MVK_PREPARED_WORKSPACE_RECORD="$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path" \
-            ./Scripts/SwiftPackage/build_swift_package.sh
-          workspace_root="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/SwiftPackage/.prepared-workspace-path")"
+          rm -f "$GITHUB_WORKSPACE/config/.prepared-workspace-path"
+          MVK_PREPARED_WORKSPACE_RECORD="$GITHUB_WORKSPACE/config/.prepared-workspace-path" \
+            ./scripts/spm/build_swift_package.sh
+          workspace_root="$(tr -d '[:space:]' < "$GITHUB_WORKSPACE/config/.prepared-workspace-path")"
           [[ -n "$workspace_root" ]] || {
             echo "error: prepared workspace path was empty" >&2
             exit 1
@@ -187,12 +187,12 @@ jobs:
 
       - name: Show ccache statistics
         if: always()
-        run: ./Scripts/SwiftPackage/report_ccache_stats.sh "Validate ccache statistics"
+        run: ./scripts/spm/report_ccache_stats.sh "Validate ccache statistics"
 
       - name: Assess compiler cache payload
         id: ccache-payload
         if: ${{ steps.cache-compiler-restore.conclusion == 'success' && steps.build.conclusion == 'success' }}
-        run: ./Scripts/SwiftPackage/check_ccache_payload.sh .ccache 262144
+        run: ./scripts/spm/check_ccache_payload.sh .ccache 262144
 
       - name: Save compiler cache
         if: >-
@@ -214,7 +214,7 @@ jobs:
           name: moltenvk-validation-${{ github.run_id }}
           path: |
             ${{ steps.build.outputs.workspace_root }}/Artifacts/*.zip
-            ${{ steps.build.outputs.workspace_root }}/SwiftPackage/checksums/*.checksum
+            ${{ steps.build.outputs.workspace_root }}/config/checksums/*.checksum
             ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK.xcframework
             ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK-static.xcframework
           if-no-files-found: ignore
