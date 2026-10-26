@@ -246,6 +246,18 @@ done
 require_path "$STATIC_SOURCE"
 cp -R "$STATIC_SOURCE" "$STATIC_DEST"
 
+log "Injecting LICENSE into frameworks and XCFrameworks"
+cp "$ROOT_DIR/LICENSE" "$DYNAMIC_DEST/LICENSE"
+cp "$ROOT_DIR/LICENSE" "$STATIC_DEST/LICENSE"
+for fw in "$DYNAMIC_DEST"/*/*.framework "$STATIC_DEST"/*/*.framework; do
+    if [[ -d "$fw/Versions/A" ]]; then
+        mkdir -p "$fw/Versions/A/Resources"
+        cp "$ROOT_DIR/LICENSE" "$fw/Versions/A/Resources/LICENSE"
+    elif [[ -d "$fw" ]]; then
+        cp "$ROOT_DIR/LICENSE" "$fw/LICENSE"
+    fi
+done
+
 log "Packaging release artifacts"
 COPYFILE_DISABLE=1 ditto -c -k --keepParent "$DYNAMIC_DEST" "$DYNAMIC_ZIP"
 COPYFILE_DISABLE=1 ditto -c -k --keepParent "$STATIC_DEST" "$STATIC_ZIP"

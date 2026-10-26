@@ -96,3 +96,10 @@ When integrating this package into a Release configuration that enables merged b
 For package consumers, the framework slices carry the public headers and module map internally, so the SwiftPM import surface is defined by the distributed `MoltenVK.xcframework`, not by wrapper-repo checkout headers.
 
 For local smoke tests or operator-only verification against a freshly built checkout artifact, use the explicit local-only manifest helper `Scripts/SwiftPackage/render_local_dev_package_manifest.py` instead of changing the committed `Package.swift`.
+
+## License
+
+This repository and its distributed binary frameworks are licensed under the **Apache License, Version 2.0** (see [LICENSE](LICENSE)), identical to upstream [`KhronosGroup/MoltenVK`](https://github.com/KhronosGroup/MoltenVK).
+
+### Trademarks
+Vulkan and the Vulkan logo are registered trademarks of the Khronos Group Inc.

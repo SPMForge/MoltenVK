@@ -27,6 +27,8 @@ assert_file() {
 
 assert_dir "$DYNAMIC_XCFRAMEWORK"
 assert_dir "$STATIC_XCFRAMEWORK"
+assert_file "$DYNAMIC_XCFRAMEWORK/LICENSE"
+assert_file "$STATIC_XCFRAMEWORK/LICENSE"
 assert_file "$DYNAMIC_ZIP"
 assert_file "$DYNAMIC_CHECKSUM"
 assert_file "$STATIC_ZIP"
@@ -54,6 +56,7 @@ EXTRACTED_DYNAMIC_ROOT="$TMP_DIR/extracted-dynamic"
 mkdir -p "$EXTRACTED_DYNAMIC_ROOT"
 ditto -x -k "$DYNAMIC_ZIP" "$EXTRACTED_DYNAMIC_ROOT"
 assert_dir "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework"
+assert_file "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework/LICENSE"
 python3 "$MOLTENVK_MERGEABLE_VALIDATOR_PATH" "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework" "${validator_args[@]}"
 if command -v rg >/dev/null 2>&1; then
     include_scan=(rg -n '^#\s*(include|import)\s+"' "$EXTRACTED_DYNAMIC_ROOT/MoltenVK.xcframework")

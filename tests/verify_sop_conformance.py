@@ -76,6 +76,15 @@ def main() -> int:
     require((REPO_ROOT / "Scripts" / "SwiftPackage" / "release_publication.py").exists(), "release publication planner missing")
     require((REPO_ROOT / "SwiftPackage" / "platforms.json").exists(), "platform config missing")
 
+    license_file = REPO_ROOT / "LICENSE"
+    require(license_file.exists(), "MoltenVK must include root LICENSE file")
+    require("Apache License" in read_text(license_file), "LICENSE must contain Apache License text")
+    require("## License" in readme and "Apache License, Version 2.0" in readme, "README must contain ## License section with Apache License 2.0")
+    require("Vulkan and the Vulkan logo are registered trademarks" in readme, "README must disclose Vulkan trademark notice")
+    require('cp "$ROOT_DIR/LICENSE" "$DYNAMIC_DEST/LICENSE"' in build_script, "build script must inject LICENSE into DYNAMIC_DEST")
+    require('cp "$ROOT_DIR/LICENSE" "$STATIC_DEST/LICENSE"' in build_script, "build script must inject LICENSE into STATIC_DEST")
+    require('cp "$ROOT_DIR/LICENSE" "$fw/Versions/A/Resources/LICENSE"' in build_script, "build script must inject LICENSE into framework slice resources")
+
     print("MoltenVK SOP conformance verified")
     return 0
 
