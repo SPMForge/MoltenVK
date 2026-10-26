@@ -92,6 +92,12 @@ def summary():
     for name in ('verify', 'resolve'):
         if needs.get(name, {}).get('result') != 'success':
             raise SystemExit(f'Required stage {name} did not succeed')
+    outputs = needs.get('resolve', {}).get('outputs', {})
+    mode = outputs.get('publication_mode', outputs.get('release_mode'))
+    if mode not in ('skip', 'metadata'):
+        for name in ('build', 'consumers', 'package_contract', 'publish', 'release'):
+            if name in needs and needs[name]['result'] != 'success':
+                raise SystemExit(f'Required stage {name} did not succeed')
 
 
 def main():

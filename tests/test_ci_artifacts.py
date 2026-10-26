@@ -35,3 +35,14 @@ class ArtifactEvidenceTests(unittest.TestCase):
                     with self.assertRaises(SystemExit):
                         module.summary()
                     self.assertIn(result, summary.read_text())
+
+    def test_unexecuted_consumers_are_not_success_when_a_build_is_required(self):
+        with tempfile.TemporaryDirectory() as temporary, patch.dict(os.environ, {
+            'CI_NEEDS': json.dumps({'verify':{'result':'success'},
+                                   'resolve':{'result':'success','outputs':{'release_mode':'create'}},
+                                   'build':{'result':'success'}, 'consumers':{'result':'skipped'}}),
+            'GITHUB_STEP_SUMMARY':str(Path(temporary) / 'summary.md'),
+            'GITHUB_REPOSITORY':'owner/repo', 'GITHUB_RUN_ID':'1',
+        }):
+            with self.assertRaises(SystemExit):
+                module.summary()

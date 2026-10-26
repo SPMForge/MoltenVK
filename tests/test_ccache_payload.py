@@ -18,6 +18,7 @@ def run_script(path: Path, minimum_bytes: int = 262144) -> subprocess.CompletedP
         capture_output=True,
         text=True,
         cwd=ROOT_DIR,
+        env={key: value for key, value in os.environ.items() if key != "GITHUB_OUTPUT"},
     )
 
 
