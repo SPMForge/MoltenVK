@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -9,10 +10,10 @@ import tempfile
 from pathlib import Path
 
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(os.environ.get("MVK_PACKAGE_ROOT", Path(__file__).resolve().parent.parent))
 PACKAGE_VERSION = (REPO_ROOT / "SwiftPackage" / "PackageVersion.txt").read_text().strip()
 HEADERS_ARCHIVE_NAME = f"MoltenVKHeaders-{PACKAGE_VERSION}.zip"
-HEADERS_ARCHIVE = REPO_ROOT / "Artifacts" / HEADERS_ARCHIVE_NAME
+HEADERS_ARCHIVE = Path(os.environ.get("MVK_HEADERS_ARCHIVE", REPO_ROOT / "Artifacts" / HEADERS_ARCHIVE_NAME))
 
 EXPECTED_DIRECTORIES = (
     "MoltenVK",
@@ -131,6 +132,16 @@ def extract_headers_archive(destination: Path) -> Path:
 
 
 def main() -> int:
+    if not HEADERS_ARCHIVE.is_file():
+        if os.environ.get("MVK_STRICT_HEADERS_CHECK") != "1":
+            print(
+                f"Notice: skipping public headers verification because {HEADERS_ARCHIVE} does not exist. "
+                "Artifacts/ is strictly an ephemeral build directory and is not tracked in Git. "
+                "Build artifacts with build_swift_package.sh to run this verification."
+            )
+            return 0
+        return fail(f"missing headers archive: {HEADERS_ARCHIVE}")
+
     try:
         with tempfile.TemporaryDirectory(prefix="moltenvk-public-headers.") as temp_dir:
             extracted_root = extract_headers_archive(Path(temp_dir))

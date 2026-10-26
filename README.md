@@ -25,6 +25,7 @@ Package contract
 - Additional release assets:
   - `MoltenVK-static-<version>.xcframework.zip`
   - `MoltenVKHeaders-<version>.zip`
+- Local build directory: `Artifacts/` (strictly an ignored local/ephemeral build output directory, never checked into the repository; tracked release metadata checksums are maintained under `SwiftPackage/checksums/`)
 - Current generated manifest path: `Package.swift`
 - Runtime dependency model: `none`
   - The distributed `MoltenVK.framework` depends only on its own install name and Apple system frameworks/libraries such as Metal, Foundation, UIKit/AppKit, IOSurface, libc++, and libSystem.
@@ -67,7 +68,7 @@ Public headers contract
 - The SwiftPM package no longer relies on a wrapper source target, repo-local `publicHeadersPath`, or checkout-state local artifact fallback in the committed `Package.swift`.
 - The importable `MoltenVK` module surface lives inside each `MoltenVK.framework` slice as framework-internal `Headers` plus `Modules/module.modulemap`.
 - Those framework-internal public headers must use framework-style same-module imports such as `<MoltenVK/vulkan/vulkan.h>`, not quoted or relative includes.
-- `Artifacts/MoltenVKHeaders-<version>.zip` is the documented C/C++ build-time include contract built from temporary staging, not from checked-in wrapper headers.
+- `Artifacts/MoltenVKHeaders-<version>.zip` is the documented C/C++ build-time include contract built from temporary staging, not from checked-in wrapper headers (`Artifacts/` is strictly a local/ephemeral build output directory and is never checked into the repository).
 - After extracting `MoltenVKHeaders-<version>.zip`, the documented include root is the extracted `include/` directory.
 - That include root exposes both Vulkan SDK-style paths such as `<vulkan/vulkan.h>` and framework-style MoltenVK paths such as `<MoltenVK/vulkan/vk_platform.h>` and `<MoltenVK/vk_video/vulkan_video_codecs_common.h>`.
 - CMake-style native consumers should pass `Vulkan_INCLUDE_DIR=<extracted>/include` and `Vulkan_LIBRARY=<path-to-MoltenVK.framework/MoltenVK>`.

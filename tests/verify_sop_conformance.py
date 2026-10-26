@@ -28,6 +28,19 @@ def main() -> int:
     manual_publish_workflow = read_text(WORKFLOWS_DIR / "publish-upstream-release-manually.yml")
     validate_workflow = read_text(WORKFLOWS_DIR / "validate-apple-release-pipeline.yml")
 
+    gitignore = read_text(REPO_ROOT / ".gitignore")
+    checksums_dir = REPO_ROOT / "SwiftPackage" / "checksums"
+
+    require(not (REPO_ROOT / "Artifacts").exists(), "committed repository must not track Artifacts directory")
+    require("/Artifacts/" in gitignore or "Artifacts/" in gitignore, ".gitignore must ignore Artifacts/")
+    require("!/Artifacts" not in gitignore, ".gitignore must not contain Artifacts whitelist exceptions")
+    require(checksums_dir.is_dir(), "SwiftPackage/checksums must exist as the tracked checksum directory")
+    require("strictly an ignored local/ephemeral build output directory" in readme, "README must document Artifacts as an ignored ephemeral build directory")
+    require("repo/SwiftPackage/checksums" in publish_workflow, "publish workflow must stage checksums into repo/SwiftPackage/checksums")
+    require("find Artifacts" not in publish_workflow, "publish workflow must not find checksums in Artifacts")
+    require('mkdir -p "$GITHUB_WORKSPACE/Artifacts"' not in publish_workflow, "publish workflow must not restore checksums into Artifacts")
+    require("SwiftPackage/checksums" in release_publication, "release publication planner must track checksums in SwiftPackage/checksums")
+
     require("wrapper repo" in readme, "README must describe MoltenVK as a wrapper repo")
     require("render_local_dev_package_manifest.py" in readme, "README must document the explicit local-only manifest helper")
     require("Alpha publishes create and tag a release/" in readme, "README must describe the alpha release-branch model")

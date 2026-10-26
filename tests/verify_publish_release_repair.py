@@ -23,7 +23,6 @@ def prepare_temp_checkout() -> Path:
     temp_root = Path(tempfile.mkdtemp(prefix="moltenvk-publish-repair-"))
     shutil.copytree(REPO_ROOT / "Scripts", temp_root / "Scripts", symlinks=True)
     shutil.copytree(REPO_ROOT / "SwiftPackage", temp_root / "SwiftPackage", symlinks=True)
-    (temp_root / "Artifacts").mkdir()
     return temp_root
 
 
@@ -42,9 +41,11 @@ def create_release_assets(root: Path, version: str) -> None:
 
     (swift_package_dir / "UpstreamSourceRef.txt").write_text("v1.2.3", encoding="utf-8")
     (root / "SwiftPackage" / "UpstreamSourceRef.txt").write_text("v1.2.3", encoding="utf-8")
-    (root / "Artifacts" / f"MoltenVK-{version}.xcframework.checksum").write_text("a" * 64, encoding="utf-8")
-    (root / "Artifacts" / f"MoltenVK-static-{version}.xcframework.checksum").write_text("b" * 64, encoding="utf-8")
-    (root / "Artifacts" / f"MoltenVKHeaders-{version}.checksum").write_text("c" * 64, encoding="utf-8")
+    checksums_dir = root / "SwiftPackage" / "checksums"
+    checksums_dir.mkdir(parents=True, exist_ok=True)
+    (checksums_dir / f"MoltenVK-{version}.xcframework.checksum").write_text("a" * 64, encoding="utf-8")
+    (checksums_dir / f"MoltenVK-static-{version}.xcframework.checksum").write_text("b" * 64, encoding="utf-8")
+    (checksums_dir / f"MoltenVKHeaders-{version}.checksum").write_text("c" * 64, encoding="utf-8")
     (root / "SwiftPackage" / ".prepared-workspace-path").write_text(str(prepared_workspace), encoding="utf-8")
 
 
@@ -318,7 +319,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stderr)
         commands = command_log.read_text(encoding="utf-8")
         self.assertIn("git switch --create release/1.2.3", commands)
-        self.assertIn("git add -A Artifacts", commands)
+        self.assertIn("git add -A SwiftPackage/checksums", commands)
         self.assertIn("git fetch --force origin refs/heads/main:refs/remotes/origin/main refs/tags/*:refs/tags/*", commands)
         self.assertIn("git tag -a 1.2.3", commands)
         self.assertIn("git push origin refs/tags/1.2.3:refs/tags/1.2.3", commands)

@@ -322,7 +322,7 @@ class ReleasePublicationTests(unittest.TestCase):
             workspace_path.write_text(content, encoding="utf-8")
             tagged_metadata[relative_path] = content
 
-        static_checksum_path = f"Artifacts/MoltenVK-static-{existing_version}.xcframework.checksum"
+        static_checksum_path = f"SwiftPackage/checksums/MoltenVK-static-{existing_version}.xcframework.checksum"
         tagged_metadata[static_checksum_path] = "old-static-checksum\n"
 
         original_remote_tags = module.list_remote_tag_names
@@ -654,11 +654,11 @@ class ReleasePublicationTests(unittest.TestCase):
 
         source_version = "1.2.3-alpha.4"
         target_version = "1.2.3-alpha.5"
-        artifacts_dir = temp_root / "Artifacts"
         swift_package_dir = temp_root / "SwiftPackage"
+        checksums_dir = swift_package_dir / "checksums"
         release_assets_dir = temp_root / "release-assets"
-        artifacts_dir.mkdir()
         swift_package_dir.mkdir()
+        checksums_dir.mkdir()
         release_assets_dir.mkdir()
 
         shutil.copyfile(ROOT_DIR / "SwiftPackage" / "platforms.json", swift_package_dir / "platforms.json")
@@ -671,7 +671,7 @@ class ReleasePublicationTests(unittest.TestCase):
             f"MoltenVKHeaders-{source_version}.checksum": "c" * 64,
         }
         for name, checksum in checksums.items():
-            (artifacts_dir / name).write_text(f"{checksum}\n", encoding="utf-8")
+            (checksums_dir / name).write_text(f"{checksum}\n", encoding="utf-8")
 
         for name in (
             f"MoltenVK-{source_version}.xcframework.zip",
@@ -683,9 +683,9 @@ class ReleasePublicationTests(unittest.TestCase):
         module.retag_generated_workspace(source_version, target_version, temp_root, release_assets_dir)
 
         self.assertEqual((swift_package_dir / "PackageVersion.txt").read_text(encoding="utf-8"), f"{target_version}\n")
-        self.assertFalse((artifacts_dir / f"MoltenVK-{source_version}.xcframework.checksum").exists())
+        self.assertFalse((checksums_dir / f"MoltenVK-{source_version}.xcframework.checksum").exists())
         self.assertFalse((release_assets_dir / f"MoltenVK-{source_version}.xcframework.zip").exists())
-        self.assertTrue((artifacts_dir / f"MoltenVK-{target_version}.xcframework.checksum").is_file())
+        self.assertTrue((checksums_dir / f"MoltenVK-{target_version}.xcframework.checksum").is_file())
         self.assertTrue((release_assets_dir / f"MoltenVK-{target_version}.xcframework.zip").is_file())
         rendered_manifest = (temp_root / "Package.swift").read_text(encoding="utf-8")
         self.assertIn(f"releases/download/{target_version}/MoltenVK-{target_version}.xcframework.zip", rendered_manifest)

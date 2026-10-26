@@ -1,8 +1,6 @@
 # MoltenVK runtime build
 /Package
-/Artifacts/*
-!/Artifacts/README.md
-!/Artifacts/*.checksum
+/Artifacts/
 /SwiftPackage/.prepared-workspace-path
 
 # MoltenVK dependencies

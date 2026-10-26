@@ -266,6 +266,8 @@ COPYFILE_DISABLE=1 ditto -c -k --keepParent "$public_headers_include_dir" "$HEAD
 swift package compute-checksum "$DYNAMIC_ZIP" >"$DYNAMIC_CHECKSUM_FILE"
 swift package compute-checksum "$STATIC_ZIP" >"$STATIC_CHECKSUM_FILE"
 swift package compute-checksum "$HEADERS_ZIP" >"$HEADERS_CHECKSUM_FILE"
+mkdir -p "$SWIFT_PACKAGE_DIR/checksums"
+cp "$DYNAMIC_CHECKSUM_FILE" "$STATIC_CHECKSUM_FILE" "$HEADERS_CHECKSUM_FILE" "$SWIFT_PACKAGE_DIR/checksums/"
 
 python3 "$ROOT_DIR/Scripts/SwiftPackage/render_package_manifest.py" \
     --version "$(read_package_version)" \

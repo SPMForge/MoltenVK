@@ -133,7 +133,7 @@ export_upstream_snapshot() {
 overlay_wrapper_files() {
     local workspace_root="$1"
 
-    mkdir -p "$workspace_root/Scripts/SwiftPackage" "$workspace_root/SwiftPackage" "$workspace_root/tests" "$workspace_root/Artifacts"
+    mkdir -p "$workspace_root/Scripts/SwiftPackage" "$workspace_root/SwiftPackage" "$workspace_root/tests"
 
     rsync -a "$ROOT_DIR/Scripts/SwiftPackage/" "$workspace_root/Scripts/SwiftPackage/"
     rsync -a "$ROOT_DIR/tests/" "$workspace_root/tests/"
@@ -226,6 +226,9 @@ sync_workspace_outputs_back() {
             cp "$workspace_root/SwiftPackage/$relative_path" "$wrapper_root/SwiftPackage/$relative_path"
         fi
     done
+
+    mkdir -p "$wrapper_root/SwiftPackage/checksums"
+    find "$workspace_root/Artifacts" -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$wrapper_root/SwiftPackage/checksums/" \;
 
     sync_dependency_cache_back "$workspace_root" "$wrapper_root"
 }

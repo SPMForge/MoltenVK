@@ -152,9 +152,9 @@ git config user.name "github-actions[bot]"
 git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 fetch_release_refs
 
-dynamic_checksum_path="Artifacts/$(dynamic_release_checksum_name "$TARGET_VERSION")"
-static_checksum_path="Artifacts/$(static_release_checksum_name "$TARGET_VERSION")"
-headers_checksum_path="Artifacts/$(headers_release_checksum_name "$TARGET_VERSION")"
+dynamic_checksum_path="SwiftPackage/checksums/$(dynamic_release_checksum_name "$TARGET_VERSION")"
+static_checksum_path="SwiftPackage/checksums/$(static_release_checksum_name "$TARGET_VERSION")"
+headers_checksum_path="SwiftPackage/checksums/$(headers_release_checksum_name "$TARGET_VERSION")"
 RELEASE_ASSETS_DIR="$(resolve_release_assets_dir)"
 dynamic_zip_path="$RELEASE_ASSETS_DIR/$(dynamic_release_archive_name "$TARGET_VERSION")"
 static_zip_path="$RELEASE_ASSETS_DIR/$(static_release_archive_name "$TARGET_VERSION")"
@@ -200,7 +200,7 @@ if [[ "$RELEASE_ACTION" == "create" ]]; then
             SwiftPackage/ReleaseRepository.txt \
             SwiftPackage/UpstreamRepository.txt \
             SwiftPackage/UpstreamSourceRef.txt
-        git add -A Artifacts
+        git add -A SwiftPackage/checksums
 
         if git diff --cached --quiet; then
             release_commit="HEAD"

@@ -214,7 +214,7 @@ jobs:
           name: moltenvk-validation-${{ github.run_id }}
           path: |
             ${{ steps.build.outputs.workspace_root }}/Artifacts/*.zip
-            ${{ steps.build.outputs.workspace_root }}/Artifacts/*.checksum
+            ${{ steps.build.outputs.workspace_root }}/SwiftPackage/checksums/*.checksum
             ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK.xcframework
             ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK-static.xcframework
           if-no-files-found: ignore

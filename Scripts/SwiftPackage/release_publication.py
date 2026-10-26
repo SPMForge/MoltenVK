@@ -461,13 +461,13 @@ def retag_generated_workspace(source_version: str, target_version: str, workspac
     if source_version == target_version:
         return
 
-    artifacts_dir = workspace_root / "Artifacts"
     swift_package_dir = workspace_root / "SwiftPackage"
+    checksums_dir = swift_package_dir / "checksums"
     release_repository_path = swift_package_dir / "ReleaseRepository.txt"
     platform_config_path = swift_package_dir / "platforms.json"
 
-    if not artifacts_dir.is_dir():
-        fail(f"Missing Artifacts directory: {artifacts_dir}")
+    if not checksums_dir.is_dir():
+        fail(f"Missing checksums directory: {checksums_dir}")
     if not release_assets_dir.is_dir():
         fail(f"Missing release assets directory: {release_assets_dir}")
     if not release_repository_path.is_file():
@@ -479,13 +479,13 @@ def retag_generated_workspace(source_version: str, target_version: str, workspac
         target_zip_name = source_zip_name.replace(source_version, target_version)
         target_checksum_name = source_checksum_name.replace(source_version, target_version)
         copy_and_remove_source(release_assets_dir / source_zip_name, release_assets_dir / target_zip_name)
-        copy_and_remove_source(artifacts_dir / source_checksum_name, artifacts_dir / target_checksum_name)
+        copy_and_remove_source(checksums_dir / source_checksum_name, checksums_dir / target_checksum_name)
 
     package_version_path = swift_package_dir / "PackageVersion.txt"
     package_version_path.write_text(f"{target_version}\n", encoding="utf-8")
 
     release_repository = release_repository_path.read_text(encoding="utf-8").strip()
-    dynamic_checksum_path = artifacts_dir / f"MoltenVK-{target_version}.xcframework.checksum"
+    dynamic_checksum_path = checksums_dir / f"MoltenVK-{target_version}.xcframework.checksum"
     dynamic_checksum = dynamic_checksum_path.read_text(encoding="utf-8").strip()
     render_script = SCRIPT_DIR / "render_package_manifest.py"
     run_command(
@@ -543,10 +543,13 @@ def metadata_paths_for_version(version: str) -> list[str]:
         "SwiftPackage/ReleaseRepository.txt",
         "SwiftPackage/UpstreamRepository.txt",
         "SwiftPackage/UpstreamSourceRef.txt",
-        f"Artifacts/MoltenVK-{version}.xcframework.checksum",
-        f"Artifacts/MoltenVK-static-{version}.xcframework.checksum",
-        f"Artifacts/MoltenVKHeaders-{version}.checksum",
+        f"SwiftPackage/checksums/MoltenVK-{version}.xcframework.checksum",
+        f"SwiftPackage/checksums/MoltenVK-static-{version}.xcframework.checksum",
+        f"SwiftPackage/checksums/MoltenVKHeaders-{version}.checksum",
     ]
+
+
+expected_tagged_file_paths = metadata_paths_for_version
 
 
 def read_tagged_text(tag: str, relative_path: str) -> str:

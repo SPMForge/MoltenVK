@@ -6,6 +6,7 @@ ROOT_DIR="${MVK_PACKAGE_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd
 ARTIFACTS_DIR="$ROOT_DIR/Artifacts"
 CONFIGURATION="${CONFIGURATION:-Release}"
 SWIFT_PACKAGE_DIR="$ROOT_DIR/SwiftPackage"
+MOLTENVK_CHECKSUMS_DIR="$SWIFT_PACKAGE_DIR/checksums"
 MOLTENVK_PLATFORM_CONFIG_FILE="$SWIFT_PACKAGE_DIR/platforms.json"
 MOLTENVK_PLATFORM_CONFIG_SCRIPT="$ROOT_DIR/Scripts/SwiftPackage/platform_config.py"
 MOLTENVK_PROJECT="$ROOT_DIR/MoltenVK/MoltenVK.xcodeproj"
@@ -346,6 +347,21 @@ headers_release_archive_name() {
 headers_release_checksum_name() {
     local version="${1:-$(read_package_version)}"
     printf 'MoltenVKHeaders-%s.checksum\n' "$version"
+}
+
+dynamic_release_checksum_path() {
+    local version="${1:-$(read_package_version)}"
+    printf '%s/%s\n' "$MOLTENVK_CHECKSUMS_DIR" "$(dynamic_release_checksum_name "$version")"
+}
+
+static_release_checksum_path() {
+    local version="${1:-$(read_package_version)}"
+    printf '%s/%s\n' "$MOLTENVK_CHECKSUMS_DIR" "$(static_release_checksum_name "$version")"
+}
+
+headers_release_checksum_path() {
+    local version="${1:-$(read_package_version)}"
+    printf '%s/%s\n' "$MOLTENVK_CHECKSUMS_DIR" "$(headers_release_checksum_name "$version")"
 }
 
 dynamic_validator_args() {

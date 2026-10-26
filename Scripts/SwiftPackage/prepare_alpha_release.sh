@@ -47,10 +47,10 @@ prepared_workspace="$(tr -d '[:space:]' <"$MOLTENVK_PREPARED_WORKSPACE_RECORD_FI
 MVK_PACKAGE_ROOT="$prepared_workspace" ./tests/verify_swift_package_artifacts.sh
 MVK_PACKAGE_ROOT="$prepared_workspace" ./tests/verify_swift_package_consumer.sh
 
-mkdir -p "$ROOT_DIR/Artifacts"
+mkdir -p "$ROOT_DIR/SwiftPackage/checksums"
 cp "$prepared_workspace/Package.swift" "$ROOT_DIR/Package.swift"
 for relative_path in PackageVersion.txt ReleaseRepository.txt UpstreamRepository.txt UpstreamSourceRef.txt; do
     cp "$prepared_workspace/SwiftPackage/$relative_path" "$ROOT_DIR/SwiftPackage/$relative_path"
 done
-find "$ROOT_DIR/Artifacts" -maxdepth 1 -name 'MoltenVK*.checksum' -delete
-find "$prepared_workspace/Artifacts" -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$ROOT_DIR/Artifacts/" \;
+find "$ROOT_DIR/SwiftPackage/checksums" -maxdepth 1 -name 'MoltenVK*.checksum' -delete
+find "$prepared_workspace/Artifacts" -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$ROOT_DIR/SwiftPackage/checksums/" \;

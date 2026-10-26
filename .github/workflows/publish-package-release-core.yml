@@ -337,7 +337,7 @@ jobs:
           payload_root="$RUNNER_TEMP/release-payload"
           rm -rf "$payload_root"
           mkdir -p \
-            "$payload_root/repo/Artifacts" \
+            "$payload_root/repo/SwiftPackage/checksums" \
             "$payload_root/repo/SwiftPackage" \
             "$payload_root/release-assets"
 
@@ -346,7 +346,7 @@ jobs:
           cp SwiftPackage/ReleaseRepository.txt "$payload_root/repo/SwiftPackage/ReleaseRepository.txt"
           cp SwiftPackage/UpstreamRepository.txt "$payload_root/repo/SwiftPackage/UpstreamRepository.txt"
           cp SwiftPackage/UpstreamSourceRef.txt "$payload_root/repo/SwiftPackage/UpstreamSourceRef.txt"
-          find Artifacts -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$payload_root/repo/Artifacts/" \;
+          find SwiftPackage/checksums -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$payload_root/repo/SwiftPackage/checksums/" \;
           cp "$WORKSPACE_ROOT/Artifacts/"*.zip "$payload_root/release-assets/"
 
       - name: Upload release payload
@@ -392,8 +392,8 @@ jobs:
         if: needs.resolve.outputs.publication_mode != 'skip'
         run: |
           cp "$RUNNER_TEMP/release-payload/repo/Package.swift" "$GITHUB_WORKSPACE/Package.swift"
-          mkdir -p "$GITHUB_WORKSPACE/Artifacts"
-          cp "$RUNNER_TEMP/release-payload/repo/Artifacts/"* "$GITHUB_WORKSPACE/Artifacts/"
+          mkdir -p "$GITHUB_WORKSPACE/SwiftPackage/checksums"
+          cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/checksums/"* "$GITHUB_WORKSPACE/SwiftPackage/checksums/"
           cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/PackageVersion.txt" "$GITHUB_WORKSPACE/SwiftPackage/PackageVersion.txt"
           cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/ReleaseRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/ReleaseRepository.txt"
           cp "$RUNNER_TEMP/release-payload/repo/SwiftPackage/UpstreamRepository.txt" "$GITHUB_WORKSPACE/SwiftPackage/UpstreamRepository.txt"
