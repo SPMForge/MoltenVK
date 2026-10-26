@@ -32,7 +32,7 @@ concurrency:
 
 jobs:
   release:
-    name: Publish requested upstream release
+    name: Requested Release
     uses: ./.github/workflows/publish-package-release-core.yml
     with:
       selection_mode: requested

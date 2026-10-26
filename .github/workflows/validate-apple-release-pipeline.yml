@@ -59,6 +59,8 @@ jobs:
       upstream_ref: ${{ steps.upstream.outputs.ref }}
       upstream_commit: ${{ steps.release_inputs.outputs.upstream_commit }}
   build:
+    outputs:
+      toolchain: ${{ steps.artifact_inventory.outputs.toolchain }}
     name: Build (MoltenVK)
     runs-on: macos-15
     env:
@@ -220,6 +222,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/consumer-payload"
           cp "${{ steps.build.outputs.workspace_root }}/Artifacts/"*.zip "$RUNNER_TEMP/consumer-payload/"
       - name: Record immutable artifact inventory
+        id: artifact_inventory
         run: python3 scripts/ci_artifacts.py record --root "$RUNNER_TEMP/consumer-payload"
       - name: Upload validation artifacts
         uses: actions/upload-artifact@v7
@@ -265,6 +268,7 @@ jobs:
       - name: Report all stage results
         env:
           CI_NEEDS: ${{ toJSON(needs) }}
+          GH_TOKEN: ${{ github.token }}
         run: python3 scripts/ci_artifacts.py summary
     needs:
       - verify

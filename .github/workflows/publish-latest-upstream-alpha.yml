@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   release:
-    name: Publish alpha release
+    name: Alpha Release
     uses: ./.github/workflows/publish-package-release-core.yml
     with:
       selection_mode: latest
