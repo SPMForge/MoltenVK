@@ -17,7 +17,11 @@ minimum_bytes="${2:-262144}"
 file_count=0
 total_bytes=0
 while IFS= read -r -d '' file_path; do
-    file_size="$(stat -f '%z' "$file_path" 2>/dev/null || stat -c '%s' "$file_path")"
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        file_size="$(stat -f '%z' "$file_path")"
+    else
+        file_size="$(stat -c '%s' "$file_path")"
+    fi
     total_bytes=$((total_bytes + file_size))
     file_count=$((file_count + 1))
 done < <(find "$ccache_dir" -type f -print0)
