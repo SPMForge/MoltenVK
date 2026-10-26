@@ -122,7 +122,7 @@ def main() -> int:
     require("vkEnumerateInstanceVersion" in consumer_script, "consumer script must exercise Vulkan API in Swift")
     require('SCHEME_NAME="SmokeConsumer"' in consumer_script, "single-product consumer script must use the SmokeConsumer scheme")
     require("@loader_path/PackageFrameworks" in consumer_script, "consumer script must configure @loader_path rpaths for SwiftPM runtime execution")
-    require("verify_swift_package_consumer.sh" in publish_workflow, "publish workflow must execute consumer smoke tests before upload")
+    require("scripts/ci_artifacts.py consumers" in publish_workflow and "needs.consumers.result == 'success'" in publish_workflow, "publish workflow must require independent consumer acceptance")
     require("restore-homebrew-download-cache" not in publish_workflow and "HOMEBREW_CACHE" not in publish_workflow, "publish workflow must not cache HOMEBREW_CACHE to prevent runner symlink poisoning")
     require("restore-homebrew-download-cache" not in validate_workflow and "HOMEBREW_CACHE" not in validate_workflow, "validate workflow must not cache HOMEBREW_CACHE to prevent runner symlink poisoning")
 

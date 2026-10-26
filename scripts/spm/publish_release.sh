@@ -171,18 +171,7 @@ created_new_remote_tag="false"
 created_new_release="false"
 release_existed_before_publish="false"
 cleanup_on_error() {
-    if [[ "$created_new_release" == "true" ]]; then
-        printf 'warning: Release publication failed; deleting incomplete release %s from GitHub...\n' "$TARGET_VERSION" >&2
-        gh release delete "$TARGET_VERSION" --yes --repo "$GITHUB_REPOSITORY" || true
-    fi
-    if [[ "$created_new_remote_tag" == "true" ]]; then
-        if remote_release_exists && [[ "$created_new_release" != "true" ]]; then
-            printf 'warning: Preserving remote tag %s because an external release exists for it.\n' "$TARGET_VERSION" >&2
-        else
-            printf 'warning: Release publication failed; rolling back newly created tag %s from origin...\n' "$TARGET_VERSION" >&2
-            git push origin ":refs/tags/${TARGET_VERSION}" || true
-        fi
-    fi
+    printf 'warning: Publication failed; preserving tag and release %s for verified repair.\n' "$TARGET_VERSION" >&2
 }
 trap cleanup_on_error ERR
 

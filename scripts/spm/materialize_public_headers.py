@@ -137,6 +137,22 @@ def rewrite_framework_header(path: Path, headers_dir: Path, public_headers: set[
         path.write_text("".join(rewritten_lines))
 
 
+def normalize_standard_header_linkage(path: Path) -> None:
+    text = path.read_text()
+    if 'extern "C"' not in text or 'SPMForge: standard library module linkage' in text:
+        return
+    # Vulkan's C linkage encloses standard includes. Clang's C++ std modules
+    # must be imported with C++ linkage; keep the original conditional guards.
+    text = re.sub(
+        r'(?m)^(\s*#\s*include\s*<(?:stdint|stddef)\.h>[^\n]*)$',
+        lambda match: ('// SPMForge: standard library module linkage\n'
+                       '#ifdef __cplusplus\nextern "C++" {\n#endif\n'
+                       + match.group(1) + '\n#ifdef __cplusplus\n}\n#endif'),
+        text,
+    )
+    path.write_text(text)
+
+
 def rewrite_framework_includes(headers_dir: Path) -> None:
     public_headers = public_header_index(headers_dir)
     for path in headers_dir.rglob("*"):
@@ -144,6 +160,7 @@ def rewrite_framework_includes(headers_dir: Path) -> None:
             continue
         if path.suffix not in PUBLIC_HEADER_SUFFIXES:
             continue
+        normalize_standard_header_linkage(path)
         rewrite_framework_header(path, headers_dir, public_headers)
 
 

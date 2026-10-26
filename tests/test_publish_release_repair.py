@@ -246,7 +246,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         commands = command_log.read_text(encoding="utf-8")
         self.assertIn("git push origin refs/tags/1.2.3-alpha.1:refs/tags/1.2.3-alpha.1", commands)
-        self.assertIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
+        self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
 
     def test_alpha_create_rolls_back_release_and_tag_when_upload_fails(self) -> None:
         completed, temp_root, command_log = self.run_publish(
@@ -263,8 +263,8 @@ class PublishReleaseRepairTests(unittest.TestCase):
         commands = command_log.read_text(encoding="utf-8")
         self.assertIn("git push origin refs/tags/1.2.3-alpha.1:refs/tags/1.2.3-alpha.1", commands)
         self.assertIn("gh release create 1.2.3-alpha.1", commands)
-        self.assertIn("gh release delete 1.2.3-alpha.1 --yes --repo SPMForge/MoltenVK", commands)
-        self.assertIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
+        self.assertNotIn("gh release delete 1.2.3-alpha.1", commands)
+        self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
 
     def test_alpha_repair_updates_existing_release_in_place(self) -> None:
         completed, temp_root, command_log = self.run_publish(
@@ -374,7 +374,7 @@ class PublishReleaseRepairTests(unittest.TestCase):
         self.assertNotIn("gh release delete 1.2.3-alpha.1", commands)
         self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
 
-    def test_alpha_create_rolls_back_adopted_release_when_upload_fails(self) -> None:
+    def test_alpha_create_preserves_adopted_release_when_upload_fails(self) -> None:
         completed, temp_root, command_log = self.run_publish(
             "1.2.3-alpha.1",
             "alpha",
@@ -391,8 +391,8 @@ class PublishReleaseRepairTests(unittest.TestCase):
         self.assertIn("gh release create 1.2.3-alpha.1", commands)
         self.assertIn("gh release edit 1.2.3-alpha.1", commands)
         self.assertIn("gh release upload 1.2.3-alpha.1", commands)
-        self.assertIn("gh release delete 1.2.3-alpha.1 --yes --repo SPMForge/MoltenVK", commands)
-        self.assertIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
+        self.assertNotIn("gh release delete 1.2.3-alpha.1", commands)
+        self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
 
     def test_alpha_create_preserves_concurrent_release_and_tag_when_create_fails_and_release_already_existed(self) -> None:
         completed, temp_root, command_log = self.run_publish(

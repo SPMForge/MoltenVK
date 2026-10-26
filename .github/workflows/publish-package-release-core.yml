@@ -1,6 +1,5 @@
 name: Publish Package Release Core
-
-on:
+'on':
   workflow_call:
     inputs:
       selection_mode:
@@ -9,7 +8,7 @@ on:
       upstream_ref:
         required: false
         type: string
-        default: ""
+        default: ''
       release_channel:
         required: true
         type: string
@@ -17,44 +16,34 @@ on:
         required: false
         type: boolean
         default: false
-
 permissions:
-  contents: write
-
-
-
+  contents: read
 concurrency:
   group: spm-package-publication-${{ github.repository }}
   cancel-in-progress: false
-
 jobs:
   verify:
-    name: Verify publish pipeline
+    name: Verify
     runs-on: macos-15
     defaults:
       run:
         shell: bash
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
-
+          python-version: '3.11'
       - name: Run unit tests
         run: |
           python3 -m unittest discover -s tests -p 'test_*.py'
-
       - name: Verify wrapper contract
         run: |
           python3 ./scripts/verify_sop_conformance.py
           ./tests/verify_swift_package_integration.sh
-
   resolve:
-    name: Resolve upstream and publication plan
+    name: Resolve
     needs: verify
     runs-on: macos-15
     defaults:
@@ -74,18 +63,15 @@ jobs:
       reason: ${{ steps.plan.outputs.reason }}
       latest_alpha_version: ${{ steps.plan.outputs.latest_alpha_version }}
       next_alpha_version: ${{ steps.plan.outputs.next_alpha_version }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
-
+          python-version: '3.11'
       - name: Resolve upstream ref
         id: upstream
         env:
@@ -142,12 +128,10 @@ jobs:
 
           echo "ref=${resolved_upstream_ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${resolved_upstream_ref}"
-
       - name: Capture immutable release inputs
         id: release_inputs
         run: |
           python3 scripts/release_inputs.py capture --upstream-tag "${{ steps.upstream.outputs.ref }}" --github-output "$GITHUB_OUTPUT"
-
       - name: Resolve publication mode
         id: plan
         env:
@@ -162,10 +146,11 @@ jobs:
             --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
             --repo "$GITHUB_REPOSITORY" \
             --github-output "$GITHUB_OUTPUT"
-
   build:
-    name: Build release artifacts
-    needs: [verify, resolve]
+    name: Build (MoltenVK)
+    needs:
+      - verify
+      - resolve
     if: needs.resolve.outputs.publication_mode != 'skip' && needs.resolve.outputs.publication_mode != 'metadata'
     runs-on: macos-15
     env:
@@ -173,21 +158,19 @@ jobs:
       MVK_ENABLE_CCACHE: "1"
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_MAXSIZE: 2G
+      SPMFORGE_DEFER_CONSUMERS: "1"
     defaults:
       run:
         shell: bash
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
-
+          python-version: '3.11'
       - name: Ensure ccache
         run: |
           if command -v ccache >/dev/null 2>&1; then
@@ -196,7 +179,6 @@ jobs:
           fi
           brew install ccache
           ccache --version | head -n 1
-
       - name: Require Swift 6 toolchain
         run: |
           swift --version
@@ -204,12 +186,10 @@ jobs:
             echo "error: Swift 6.0 or newer is required for Package.swift" >&2
             exit 1
           }
-
       - name: Preflight Apple platforms
         env:
           MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: ./scripts/spm/preflight_apple_platforms.sh
-
       - name: Prep cache key
         id: prep
         env:
@@ -252,7 +232,6 @@ jobs:
           echo "upstream_inputs_hash=${upstream_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "dependency_cache_inputs_hash=${dependency_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "compiler_cache_inputs_hash=${compiler_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
-
       - name: Restore compiler cache
         id: cache-compiler-restore
         uses: actions/cache/restore@v5
@@ -262,7 +241,6 @@ jobs:
           restore-keys: |
             ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-
             ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-
-
       - name: Cache MoltenVK external dependencies
         id: cache-dependencies
         uses: actions/cache@v5
@@ -277,16 +255,13 @@ jobs:
             External/build
             !External/build/Intermediates
           key: dependencies-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.dependency_cache_inputs_hash }}-v2
-
       - name: Verify release layout
         run: ./tests/verify_swift_package_integration.sh
-
       - name: Prewarm MoltenVK dependencies
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         env:
           MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: ./scripts/spm/build_swift_package_dependencies.sh
-
       - name: Prepare release artifacts
         id: prepare
         env:
@@ -313,33 +288,23 @@ jobs:
             exit 1
           }
           echo "workspace_root=$workspace_root" >> "$GITHUB_OUTPUT"
-
       - name: Validate Swift Package manifest
         run: |
           cd "${{ steps.prepare.outputs.workspace_root }}"
           swift package dump-package >/dev/null
-
       - name: Verify generated package assets
         env:
           MVK_PACKAGE_ROOT: ${{ steps.prepare.outputs.workspace_root }}
         run: ./tests/verify_swift_package_artifacts.sh
-
-      - name: Verify consumer smoke tests
-        env:
-          MVK_PACKAGE_ROOT: ${{ steps.prepare.outputs.workspace_root }}
-        run: ./tests/verify_swift_package_consumer.sh
-
       - name: Show ccache statistics
         if: always()
         run: ./scripts/spm/report_ccache_stats.sh "Publish build ccache statistics"
-
       - name: Assess compiler cache payload
         id: ccache-payload
         if: ${{ steps.cache-compiler-restore.conclusion == 'success' && steps.prepare.conclusion == 'success' }}
         run: ./scripts/spm/check_ccache_payload.sh .ccache 262144
-
       - name: Save compiler cache
-        if: >-
+        if: |-
           ${{
             steps.cache-compiler-restore.conclusion == 'success' &&
             steps.cache-compiler-restore.outputs.cache-hit != 'true' &&
@@ -350,11 +315,9 @@ jobs:
         with:
           path: .ccache
           key: ${{ steps.cache-compiler-restore.outputs.cache-primary-key }}
-
       - name: Record built release inputs
         run: |
           python3 scripts/release_inputs.py capture --upstream-tag "${{ needs.resolve.outputs.upstream_ref }}" --upstream-commit "${{ needs.resolve.outputs.upstream_commit }}"
-
       - name: Stage release payload
         id: payload
         env:
@@ -375,7 +338,8 @@ jobs:
           cp config/release-inputs.json "$payload_root/repo/config/release-inputs.json"
           find config/checksums -maxdepth 1 -name 'MoltenVK*.checksum' -exec cp {} "$payload_root/repo/config/checksums/" \;
           cp "$WORKSPACE_ROOT/Artifacts/"*.zip "$payload_root/release-assets/"
-
+      - name: Record immutable artifact inventory
+        run: python3 scripts/ci_artifacts.py record --root "$RUNNER_TEMP/release-payload"
       - name: Upload release payload
         uses: actions/upload-artifact@v7
         with:
@@ -383,38 +347,57 @@ jobs:
           overwrite: true
           path: ${{ runner.temp }}/release-payload
           if-no-files-found: error
-
-  publish:
-    name: Publish package release
+    permissions:
+      contents: read
+  consumers:
+    name: Validate Consumers
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Download final archives
+        uses: actions/download-artifact@v8
+        with:
+          name: moltenvk-release-payload-${{ github.run_id }}
+          path: ${{ runner.temp }}/consumer-inputs
+      - name: Run Debug and Release consumers
+        run: python3 scripts/ci_artifacts.py consumers --root "$RUNNER_TEMP/consumer-inputs" --product "MoltenVK"
     needs:
       - resolve
       - build
-    if: always() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.resolve.outputs.publication_mode != 'skip' || (inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.remote_tag_exists == 'true')) && needs.resolve.outputs.publication_mode != 'metadata'
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+  publish:
+    name: Publish
+    needs:
+      - resolve
+      - build
+      - consumers
+    if: (always() && needs.resolve.result == 'success' && (needs.build.result == 'success' || needs.build.result == 'skipped') && (needs.resolve.outputs.publication_mode != 'skip' || (inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.remote_tag_exists == 'true')) && needs.resolve.outputs.publication_mode != 'metadata') && (needs.consumers.result == 'success' || (needs.resolve.outputs.publication_mode == 'skip' && needs.consumers.result == 'skipped'))
     runs-on: macos-15
     env:
       DEFAULT_BRANCH: ${{ github.event.repository.default_branch || 'main' }}
     defaults:
       run:
         shell: bash
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
-          python-version: "3.11"
-
+          python-version: '3.11'
       - name: Download release payload
         if: needs.resolve.outputs.publication_mode != 'skip'
         uses: actions/download-artifact@v8
         with:
           name: moltenvk-release-payload-${{ github.run_id }}
           path: ${{ runner.temp }}/release-payload
-
       - name: Restore generated release payload
         if: needs.resolve.outputs.publication_mode != 'skip'
         run: |
@@ -426,7 +409,6 @@ jobs:
           cp "$RUNNER_TEMP/release-payload/repo/config/UpstreamRepository.txt" "$GITHUB_WORKSPACE/config/UpstreamRepository.txt"
           cp "$RUNNER_TEMP/release-payload/repo/config/UpstreamSourceRef.txt" "$GITHUB_WORKSPACE/config/UpstreamSourceRef.txt"
           cp "$RUNNER_TEMP/release-payload/repo/config/release-inputs.json" "$GITHUB_WORKSPACE/config/release-inputs.json"
-
       - name: Resolve final publication mode from rendered package contract
         id: final_plan
         if: needs.resolve.outputs.publication_mode != 'skip'
@@ -444,7 +426,6 @@ jobs:
             --rendered-package-swift "$GITHUB_WORKSPACE/Package.swift" \
             --rendered-workspace-root "$GITHUB_WORKSPACE" \
             --github-output "$GITHUB_OUTPUT"
-
       - name: Retag generated release payload
         if: needs.resolve.outputs.publication_mode != 'skip' && steps.final_plan.outputs.target_version != needs.resolve.outputs.build_version
         env:
@@ -457,7 +438,6 @@ jobs:
             --target-version "$TARGET_VERSION" \
             --workspace-root "$GITHUB_WORKSPACE" \
             --release-assets-dir "$RELEASE_ASSETS_DIR"
-
       - name: Verify existing package tag matches generated metadata
         if: needs.resolve.outputs.publication_mode != 'skip' && steps.final_plan.outputs.remote_tag_exists == 'true'
         env:
@@ -467,7 +447,6 @@ jobs:
           python3 ./scripts/spm/release_publication.py assert-tagged-state \
             --tag "$TARGET_VERSION" \
             --workspace-root "$GITHUB_WORKSPACE"
-
       - name: Publish release
         if: needs.resolve.outputs.publication_mode != 'skip' && steps.final_plan.outputs.publication_mode != 'skip'
         env:
@@ -479,7 +458,6 @@ jobs:
           MVK_DEFAULT_BRANCH: ${{ env.DEFAULT_BRANCH }}
           MVK_PUBLISH_TO_DEFAULT_BRANCH: ${{ inputs.publish_to_default_branch }}
         run: ./scripts/spm/publish_release.sh "$TARGET_VERSION" "$RELEASE_KIND"
-
       - name: Optionally fast-forward default branch to existing stable tag
         if: inputs.publish_to_default_branch && inputs.release_channel == 'stable' && needs.resolve.outputs.publication_mode == 'skip'
         env:
@@ -490,10 +468,13 @@ jobs:
             "refs/tags/${TARGET_VERSION}:refs/tags/${TARGET_VERSION}"
           release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
           git push origin "${release_commit}:refs/heads/${DEFAULT_BRANCH}"
-
+    permissions:
+      contents: write
   repair_existing_metadata:
-    name: Repair complete release metadata without rebuilding
-    needs: [verify, resolve]
+    name: Repair Metadata
+    needs:
+      - verify
+      - resolve
     if: needs.resolve.result == 'success' && needs.resolve.outputs.publication_mode == 'metadata'
     runs-on: ubuntu-latest
     steps:
@@ -520,3 +501,45 @@ jobs:
             release_commit="$(git rev-parse "refs/tags/${TARGET_VERSION}^{commit}")"
             git push origin "${release_commit}:refs/heads/${DEFAULT_BRANCH}"
           fi
+    permissions:
+      contents: write
+  reuse:
+    name: Reuse
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Explain existing release reuse
+        run: echo "Input identity and complete published assets match; no build, tag or upload is required."
+    needs:
+      - verify
+      - resolve
+    if: needs.resolve.outputs.publication_mode == 'skip'
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Report all stage results
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_artifacts.py summary
+    needs:
+      - verify
+      - resolve
+      - build
+      - consumers
+      - publish
+      - repair_existing_metadata
+      - reuse
+    if: always()
+defaults:
+  run:
+    shell: bash

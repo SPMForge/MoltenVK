@@ -49,7 +49,9 @@ prepared_workspace="$(tr -d '[:space:]' <"$MOLTENVK_PREPARED_WORKSPACE_RECORD_FI
 
 (cd "$prepared_workspace" && swift package dump-package >/dev/null)
 MVK_PACKAGE_ROOT="$prepared_workspace" ./tests/verify_swift_package_artifacts.sh
-MVK_PACKAGE_ROOT="$prepared_workspace" ./tests/verify_swift_package_consumer.sh
+if [[ "${SPMFORGE_DEFER_CONSUMERS:-0}" != "1" ]]; then
+    MVK_PACKAGE_ROOT="$prepared_workspace" ./tests/verify_swift_package_consumer.sh
+fi
 
 mkdir -p "$ROOT_DIR/config/checksums"
 cp "$prepared_workspace/Package.swift" "$ROOT_DIR/Package.swift"

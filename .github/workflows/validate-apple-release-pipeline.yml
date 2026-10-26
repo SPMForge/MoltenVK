@@ -1,65 +1,45 @@
 name: Validate Apple Release Pipeline
-
 run-name: Validate pipeline for ${{ github.event_name == 'pull_request' && format('PR {0}', github.event.pull_request.number) || github.ref_name }}
-
-on:
-  push:
-  pull_request:
+'on':
+  push: null
+  pull_request: null
   workflow_dispatch:
     inputs:
       upstream_ref:
         description: Optional stable upstream tag to validate instead of the latest upstream stable release
         required: false
-        default: ""
+        default: ''
         type: string
-
 permissions:
   contents: read
-
-
-
 concurrency:
   group: validate-apple-release-pipeline-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
-
 jobs:
-  validate:
-    name: Validate release pipeline
-    runs-on: macos-15
-    env:
-      MVK_ENABLE_CCACHE: "1"
-      CCACHE_DIR: ${{ github.workspace }}/.ccache
-      CCACHE_MAXSIZE: 2G
-    defaults:
-      run:
-        shell: bash
-
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v6
         with:
-          python-version: "3.11"
-
-      - name: Ensure ccache
+          fetch-depth: 0
+      - name: Verify release layout
+        run: ./tests/verify_swift_package_integration.sh
+      - name: Verify SOP and unit tests
         run: |
-          if command -v ccache >/dev/null 2>&1; then
-            ccache --version | head -n 1
-            exit 0
-          fi
-          brew install ccache
-          ccache --version | head -n 1
-
-      - name: Require Swift 6 toolchain
-        run: |
-          swift --version
-          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
-            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
-            exit 1
-          }
-
+          python3 scripts/verify_sop_conformance.py
+          python3 -m unittest discover -s tests -p "test_*.py"
+  resolve:
+    name: Resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Resolve upstream ref for validation
         id: upstream
         run: |
@@ -71,16 +51,62 @@ jobs:
           fi
           echo "ref=${resolved_ref}" >> "$GITHUB_OUTPUT"
           echo "Resolved upstream ref: ${resolved_ref}"
-
+      - name: Capture immutable source identity
+        id: release_inputs
+        run: python3 scripts/release_inputs.py capture --upstream-tag "${{ steps.upstream.outputs.ref }}" --github-output "$GITHUB_OUTPUT"
+    needs: verify
+    outputs:
+      upstream_ref: ${{ steps.upstream.outputs.ref }}
+      upstream_commit: ${{ steps.release_inputs.outputs.upstream_commit }}
+  build:
+    name: Build (MoltenVK)
+    runs-on: macos-15
+    env:
+      MVK_ENABLE_CCACHE: "1"
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: 2G
+      SPMFORGE_EXPECTED_UPSTREAM_COMMIT: ${{ needs.resolve.outputs.upstream_commit }}
+      SPMFORGE_DEFER_CONSUMERS: "1"
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Use resolved upstream ref
+        run: echo "MVK_UPSTREAM_REF=${{ needs.resolve.outputs.upstream_ref }}" >> "$GITHUB_ENV"
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Ensure ccache
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --version | head -n 1
+            exit 0
+          fi
+          brew install ccache
+          ccache --version | head -n 1
+      - name: Require Swift 6 toolchain
+        run: |
+          swift --version
+          swift --version | grep -Eq '(Apple Swift version|Swift version) ([6-9]|[1-9][0-9])\.' || {
+            echo "error: Swift 6.0 or newer is required for Package.swift" >&2
+            exit 1
+          }
       - name: Preflight Apple platforms
         env:
-          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: ./scripts/spm/preflight_apple_platforms.sh
-
+      - name: Fetch resolved upstream snapshot
+        run: |
+          source ./scripts/spm/source_acquisition.sh
+          fetch_upstream_tags
+          python3 scripts/release_inputs.py verify-source --upstream-tag "${{ needs.resolve.outputs.upstream_ref }}"
       - name: Prep cache key
         id: prep
         env:
-          RESOLVED_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          RESOLVED_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: |
           xcode_version="$(xcodebuild -version | tr '\t\r\n ' '_')"
           upstream_tree_ref="refs/upstream-tags/${RESOLVED_UPSTREAM_REF}"
@@ -119,21 +145,20 @@ jobs:
           echo "upstream_inputs_hash=${upstream_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "dependency_cache_inputs_hash=${dependency_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
           echo "compiler_cache_inputs_hash=${compiler_cache_inputs_hash}" >> "$GITHUB_OUTPUT"
-
       - name: Restore compiler cache
         id: cache-compiler-restore
         uses: actions/cache/restore@v5
         with:
+          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
           path: .ccache
-          key: ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.compiler_cache_inputs_hash }}-v2
           restore-keys: |
-            ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-
+            ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-
             ccache-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-
-
       - name: Cache MoltenVK external dependencies
         id: cache-dependencies
         uses: actions/cache@v5
         with:
+          key: dependencies-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ needs.resolve.outputs.upstream_ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.dependency_cache_inputs_hash }}-v2
           path: |
             External/cereal
             External/Vulkan-Headers
@@ -143,22 +168,16 @@ jobs:
             External/Volk
             External/build
             !External/build/Intermediates
-          key: dependencies-${{ runner.os }}-${{ steps.prep.outputs.xcode_version }}-${{ steps.upstream.outputs.ref }}-${{ steps.prep.outputs.upstream_inputs_hash }}-${{ steps.prep.outputs.dependency_cache_inputs_hash }}-v2
-
-      - name: Verify release layout
-        run: ./tests/verify_swift_package_integration.sh
-
       - name: Prewarm MoltenVK dependencies
         if: steps.cache-dependencies.outputs.cache-hit != 'true'
         env:
-          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
+          MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
         run: ./scripts/spm/build_swift_package_dependencies.sh
-
       - name: Build Swift Package artifacts
         id: build
         env:
+          MVK_UPSTREAM_REF: ${{ needs.resolve.outputs.upstream_ref }}
           SKIP_DEPENDENCY_FETCH: "1"
-          MVK_UPSTREAM_REF: ${{ steps.upstream.outputs.ref }}
         run: |
           rm -f "$GITHUB_WORKSPACE/config/.prepared-workspace-path"
           MVK_PREPARED_WORKSPACE_RECORD="$GITHUB_WORKSPACE/config/.prepared-workspace-path" \
@@ -169,33 +188,23 @@ jobs:
             exit 1
           }
           echo "workspace_root=$workspace_root" >> "$GITHUB_OUTPUT"
-
       - name: Validate Swift Package manifest
         run: |
           cd "${{ steps.build.outputs.workspace_root }}"
           swift package dump-package >/dev/null
-
       - name: Verify generated package assets
         env:
           MVK_PACKAGE_ROOT: ${{ steps.build.outputs.workspace_root }}
         run: ./tests/verify_swift_package_artifacts.sh
-
-      - name: Verify consumer smoke tests
-        env:
-          MVK_PACKAGE_ROOT: ${{ steps.build.outputs.workspace_root }}
-        run: ./tests/verify_swift_package_consumer.sh
-
       - name: Show ccache statistics
         if: always()
         run: ./scripts/spm/report_ccache_stats.sh "Validate ccache statistics"
-
       - name: Assess compiler cache payload
         id: ccache-payload
         if: ${{ steps.cache-compiler-restore.conclusion == 'success' && steps.build.conclusion == 'success' }}
         run: ./scripts/spm/check_ccache_payload.sh .ccache 262144
-
       - name: Save compiler cache
-        if: >-
+        if: |-
           ${{
             steps.cache-compiler-restore.conclusion == 'success' &&
             steps.cache-compiler-restore.outputs.cache-hit != 'true' &&
@@ -204,17 +213,65 @@ jobs:
           }}
         uses: actions/cache/save@v5
         with:
-          path: .ccache
           key: ${{ steps.cache-compiler-restore.outputs.cache-primary-key }}
-
+          path: .ccache
+      - name: Stage final archives
+        run: |
+          mkdir -p "$RUNNER_TEMP/consumer-payload"
+          cp "${{ steps.build.outputs.workspace_root }}/Artifacts/"*.zip "$RUNNER_TEMP/consumer-payload/"
+      - name: Record immutable artifact inventory
+        run: python3 scripts/ci_artifacts.py record --root "$RUNNER_TEMP/consumer-payload"
       - name: Upload validation artifacts
-        if: always()
         uses: actions/upload-artifact@v7
         with:
+          if-no-files-found: error
           name: moltenvk-validation-${{ github.run_id }}
-          path: |
-            ${{ steps.build.outputs.workspace_root }}/Artifacts/*.zip
-            ${{ steps.build.outputs.workspace_root }}/config/checksums/*.checksum
-            ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK.xcframework
-            ${{ steps.build.outputs.workspace_root }}/Artifacts/MoltenVK-static.xcframework
-          if-no-files-found: ignore
+          path: ${{ runner.temp }}/consumer-payload
+    needs:
+      - verify
+      - resolve
+    permissions:
+      contents: read
+  consumers:
+    name: Validate Consumers
+    runs-on: macos-15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Download final archives
+        uses: actions/download-artifact@v8
+        with:
+          name: moltenvk-validation-${{ github.run_id }}
+          path: ${{ runner.temp }}/consumer-inputs
+      - name: Run Debug and Release consumers
+        run: python3 scripts/ci_artifacts.py consumers --root "$RUNNER_TEMP/consumer-inputs" --product "MoltenVK"
+    needs:
+      - resolve
+      - build
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+  summary:
+    name: Summary
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Report all stage results
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: python3 scripts/ci_artifacts.py summary
+    needs:
+      - verify
+      - resolve
+      - build
+      - consumers
+    if: always()
+defaults:
+  run:
+    shell: bash

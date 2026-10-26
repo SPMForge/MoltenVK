@@ -52,6 +52,7 @@ run_consumer_builds_for_platform() {
     if [[ "$platform_id" == "macos" ]]; then
         (
             cd "$TMP_DIR"
+            swift run --configuration debug SmokeConsumer
             swift run --configuration release SmokeConsumer
         )
     fi

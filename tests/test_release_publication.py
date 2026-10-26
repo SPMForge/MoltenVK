@@ -11,6 +11,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -38,6 +39,19 @@ class ReleasePublicationTests(unittest.TestCase):
             is_prerelease=is_prerelease,
             is_draft=is_draft,
         )
+
+    def test_first_stable_with_captured_inputs_and_absent_tag_is_created(self):
+        with patch.object(module, 'list_remote_tag_names', return_value=[]), \
+             patch.object(module, 'list_github_release_tags', return_value=[]), \
+             patch.object(module, 'fetch_github_release', return_value=None), \
+             patch.object(module, 'fetch_latest_release_tag', return_value=None), \
+             patch.object(module.release_inputs, 'tag_inputs_match', return_value=False):
+            plan = module.resolve_release_plan('requested', 'stable', 'v1.2.3', 'SPMForge/MoltenVK')
+        self.assertEqual(plan.publication_mode, 'create')
+
+    def test_matching_identity_is_authoritative_over_generated_metadata_diff(self):
+        with patch.object(module.release_inputs, 'tag_inputs_match', return_value=True):
+            self.assertFalse(module.repo_has_changes_since_tag('1.2.3-alpha.1'))
 
     def test_alpha_create_when_no_existing_tag_or_release(self) -> None:
         original_remote_tags = module.list_remote_tag_names

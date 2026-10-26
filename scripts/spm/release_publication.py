@@ -343,8 +343,9 @@ def with_alpha_context(plan: ReleasePlan, latest_alpha: Version, base_version: V
 
 def repo_has_changes_since_tag(tag: str, repo_root: Path | None = None) -> bool:
     root = repo_root or SCRIPT_DIR.parents[1]
-    if release_inputs.tag_inputs_match(root, tag) is False:
-        return True
+    identity_match = release_inputs.tag_inputs_match(root, tag)
+    if identity_match is not None:
+        return not identity_match
     tag_rev = run_command(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], check=False, cwd=root)
     if tag_rev.returncode != 0:
         return True
@@ -358,6 +359,7 @@ def repo_has_changes_since_tag(tag: str, repo_root: Path | None = None) -> bool:
         "--",
         ".",
         ":(exclude)Package.swift",
+        ":(exclude)config/release-inputs.json",
         ":(exclude)config/PackageVersion.txt",
         ":(exclude)config/ReleaseRepository.txt",
         ":(exclude)config/UpstreamRepository.txt",
@@ -474,7 +476,7 @@ def resolve_release_plan(
 
     if release_channel == "stable":
         target_version = str(base_version)
-        if release_inputs.tag_inputs_match(SCRIPT_DIR.parents[1], target_version) is False:
+        if target_version in remote_tag_names and release_inputs.tag_inputs_match(SCRIPT_DIR.parents[1], target_version) is False:
             fail("Existing stable tag has different or unrecorded release inputs; refusing reuse.")
         return inspect_target_state(repo, upstream_ref, target_version, release_channel, set(remote_tag_names))
 
