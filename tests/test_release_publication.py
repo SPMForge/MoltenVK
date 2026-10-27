@@ -36,6 +36,25 @@ class ReleasePublicationTests(unittest.TestCase):
         self.assertEqual(plan.publication_mode, 'create')
         self.assertEqual(plan.next_alpha_version, '1.2.3-alpha.3')
 
+    def test_final_plan_rejects_changed_resolved_build(self):
+        args = module.build_parser().parse_args(['plan', '--selection-mode', 'requested', '--release-channel', 'alpha',
+            '--upstream-ref', 'v1.2.3', '--repo', 'SPMForge/MoltenVK', '--resolved-build-version', '1.2.3-alpha.1'])
+        plan = module.ReleasePlan(upstream_ref='v1.2.3', target_version='1.2.3-alpha.4', publication_mode='create',
+            release_action='create', remote_tag_exists=False, release_exists=False, metadata_needs_repair=False,
+            missing_assets=[], reason='changed', build_version='1.2.3-alpha.3')
+        with patch.object(module, 'resolve_release_plan', return_value=plan), self.assertRaises(SystemExit):
+            module.command_plan(args)
+
+    def test_final_plan_rejects_newly_occupied_fixed_candidate(self):
+        args = module.build_parser().parse_args(['plan', '--selection-mode', 'requested', '--release-channel', 'alpha',
+            '--upstream-ref', 'v1.2.3', '--repo', 'SPMForge/MoltenVK', '--resolved-build-version', '1.2.3-alpha.1',
+            '--resolved-remote-tag-exists', 'false'])
+        plan = module.ReleasePlan(upstream_ref='v1.2.3', target_version='1.2.3-alpha.1', publication_mode='repair',
+            release_action='create', remote_tag_exists=True, release_exists=False, metadata_needs_repair=False,
+            missing_assets=[], reason='race', build_version='1.2.3-alpha.1')
+        with patch.object(module, 'resolve_release_plan', return_value=plan), self.assertRaises(SystemExit):
+            module.command_plan(args)
+
     def stub_release(
         self,
         *,
