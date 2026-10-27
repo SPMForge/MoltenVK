@@ -75,11 +75,15 @@ case "$1" in
     fi
     exit 1
     ;;
+  show-ref)
+    [[ "{str(local_tag_exists).lower()}" == "true" ]] && exit 0
+    exit 1
+    ;;
   ls-remote)
     if [[ "{str(remote_tag_exists).lower()}" == "true" && "$*" == *"refs/tags/"* ]]; then
       exit 0
     fi
-    exit 1
+    exit 2
     ;;
   push)
     if [[ "{str(fail_push_default_branch).lower()}" == "true" && "$*" == *":refs/heads/"* ]]; then
@@ -112,8 +116,12 @@ set -euo pipefail
 printf 'gh %s\\n' "$*" >> "{log_file}"
 case "$1 $2" in
   api\\ repos/*/releases/tags/*)
-    printf '%s\\n' '{{"assets": []}}'
-    exit 0
+    if [[ "{str(release_exists).lower()}" == "true" || -f "{bin_dir / "release_created"}" ]]; then
+      printf '%s\\n' '{{"id": 1, "tag_name": "1.2.3-alpha.1", "draft": false, "assets": []}}'
+      exit 0
+    fi
+    printf '%s\\n' 'gh: Not Found (HTTP 404)' >&2
+    exit 1
     ;;
   release\\ view)
     if [[ -f "{bin_dir / "release_created"}" ]]; then
@@ -407,7 +415,9 @@ class PublishReleaseRepairTests(unittest.TestCase):
 
         self.assertNotEqual(completed.returncode, 0)
         commands = command_log.read_text(encoding="utf-8")
-        self.assertIn("gh release create 1.2.3-alpha.1", commands)
+        self.assertNotIn("gh release create 1.2.3-alpha.1", commands)
+        self.assertNotIn("git tag -a", commands)
+        self.assertIn("occupied after Resolve", completed.stderr)
         self.assertNotIn("gh release delete 1.2.3-alpha.1", commands)
         self.assertNotIn("git push origin :refs/tags/1.2.3-alpha.1", commands)
 

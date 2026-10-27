@@ -7,7 +7,7 @@ import json
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -382,6 +382,7 @@ def select_existing_or_next_alpha_plan(
     remote_tags: set[str],
     rendered_package_swift: str | None,
     rendered_workspace_root: Path | None,
+    reserved_next_alpha_version: str = "",
 ) -> ReleasePlan:
     highest_tag = str(highest_alpha)
     highest_plan = inspect_target_state(repo, upstream_ref, highest_tag, release_channel, remote_tags)
@@ -429,7 +430,7 @@ def select_existing_or_next_alpha_plan(
         return with_alpha_context(highest_plan, highest_alpha, base_version)
 
     next_alpha = (highest_alpha.alpha or 0) + 1
-    target_version = str(base_version.with_alpha(next_alpha))
+    target_version = reserved_next_alpha_version or str(base_version.with_alpha(next_alpha))
     next_plan = inspect_target_state(repo, upstream_ref, target_version, release_channel, remote_tags)
     return with_alpha_context(
         ReleasePlan(
@@ -456,6 +457,7 @@ def resolve_release_plan(
     repo: str,
     rendered_package_swift: str | None = None,
     rendered_workspace_root: Path | None = None,
+    reserved_next_alpha_version: str = "",
 ) -> ReleasePlan:
     if release_channel not in {"alpha", "stable"}:
         fail(f"Unsupported release channel: {release_channel}")
@@ -507,7 +509,7 @@ def resolve_release_plan(
             f"({stable_plan.reason}); repair it through the stable release path before publishing alpha."
         )
 
-    alpha_versions = [version for version in matching_versions if version.is_alpha]
+    alpha_versions = [version for version in matching_versions if version.is_alpha and str(version) in remote_tag_names]
     if alpha_versions:
         highest_alpha = max(alpha_versions, key=lambda version: version.alpha or 0)
         return select_existing_or_next_alpha_plan(
@@ -519,9 +521,10 @@ def resolve_release_plan(
             remote_tags=set(remote_tag_names),
             rendered_package_swift=rendered_package_swift,
             rendered_workspace_root=rendered_workspace_root,
+            reserved_next_alpha_version=reserved_next_alpha_version,
         )
 
-    target_version = str(base_version.with_alpha(1))
+    target_version = reserved_next_alpha_version or str(base_version.with_alpha(1))
     return inspect_target_state(repo, upstream_ref, target_version, release_channel, set(remote_tag_names))
 
 
@@ -678,7 +681,17 @@ def command_plan(args: argparse.Namespace) -> int:
         repo=args.repo,
         rendered_package_swift=rendered_package_swift,
         rendered_workspace_root=rendered_workspace_root,
+        reserved_next_alpha_version=getattr(args, 'reserved_next_alpha_version', ''),
     )
+    if getattr(args, 'reserve_alpha_names', False) and args.release_channel == 'alpha' and plan.publication_mode not in ('skip', 'metadata'):
+        candidate = plan.next_alpha_version or plan.target_version
+        allocation = release_inputs.find_available_alpha(
+            SCRIPT_DIR.parents[1], args.repo, candidate, release_inputs.increment_alpha_tag)
+        plan = replace(plan, next_alpha_version=allocation['tag'], reason=plan.reason + '; ' + allocation['reason'])
+        if not plan.remote_tag_exists:
+            plan = replace(plan, target_version=allocation['tag'], build_version=allocation['tag'],
+                           publication_mode='create', release_action='create', release_exists=False,
+                           missing_assets=sorted(required_release_assets(allocation['tag'])))
     outputs = plan.as_output_map()
     if args.github_output:
         write_github_output(Path(args.github_output), outputs)
@@ -715,6 +728,8 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--repo", required=True)
     plan_parser.add_argument("--rendered-package-swift", default="")
     plan_parser.add_argument("--rendered-workspace-root", default="")
+    plan_parser.add_argument("--reserve-alpha-names", action="store_true")
+    plan_parser.add_argument("--reserved-next-alpha-version", default="")
     plan_parser.add_argument("--github-output", default="")
     plan_parser.set_defaults(func=command_plan)
 

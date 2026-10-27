@@ -145,6 +145,7 @@ jobs:
             --release-channel "${INPUT_RELEASE_CHANNEL}" \
             --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
             --repo "$GITHUB_REPOSITORY" \
+            --reserve-alpha-names \
             --github-output "$GITHUB_OUTPUT"
   build:
     outputs:
@@ -429,6 +430,7 @@ jobs:
             --release-channel "${INPUT_RELEASE_CHANNEL}" \
             --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
             --repo "$GITHUB_REPOSITORY" \
+            --reserved-next-alpha-version "${{ needs.resolve.outputs.next_alpha_version }}" \
             --rendered-package-swift "$GITHUB_WORKSPACE/Package.swift" \
             --rendered-workspace-root "$GITHUB_WORKSPACE" \
             --github-output "$GITHUB_OUTPUT"

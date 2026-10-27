@@ -62,6 +62,9 @@ remote_release_exists() {
 }
 
 create_release_tag() {
+    if [[ "$TARGET_VERSION" == *-alpha.* ]]; then
+        python3 "$ROOT_DIR/scripts/release_inputs.py" assert-alpha-available --repository "$GITHUB_REPOSITORY" --tag "$TARGET_VERSION"
+    fi
     if remote_tag_exists; then
         fail "Package tag ${TARGET_VERSION} already exists on origin."
     fi
