@@ -458,6 +458,7 @@ def resolve_release_plan(
     rendered_package_swift: str | None = None,
     rendered_workspace_root: Path | None = None,
     reserved_next_alpha_version: str = "",
+    reserve_alpha_names: bool = False,
 ) -> ReleasePlan:
     if release_channel not in {"alpha", "stable"}:
         fail(f"Unsupported release channel: {release_channel}")
@@ -525,6 +526,9 @@ def resolve_release_plan(
         )
 
     target_version = reserved_next_alpha_version or str(base_version.with_alpha(1))
+    if reserve_alpha_names:
+        target_version = release_inputs.find_available_alpha(
+            SCRIPT_DIR.parents[1], repo, target_version, release_inputs.increment_alpha_tag)['tag']
     return inspect_target_state(repo, upstream_ref, target_version, release_channel, set(remote_tag_names))
 
 
@@ -682,8 +686,9 @@ def command_plan(args: argparse.Namespace) -> int:
         rendered_package_swift=rendered_package_swift,
         rendered_workspace_root=rendered_workspace_root,
         reserved_next_alpha_version=getattr(args, 'reserved_next_alpha_version', ''),
+        reserve_alpha_names=getattr(args, 'reserve_alpha_names', False),
     )
-    if getattr(args, 'reserve_alpha_names', False) and args.release_channel == 'alpha' and plan.publication_mode not in ('skip', 'metadata'):
+    if getattr(args, 'reserve_alpha_names', False) and args.release_channel == 'alpha' and plan.publication_mode not in ('skip', 'metadata') and plan.latest_alpha_version:
         candidate = plan.next_alpha_version or plan.target_version
         allocation = release_inputs.find_available_alpha(
             SCRIPT_DIR.parents[1], args.repo, candidate, release_inputs.increment_alpha_tag)

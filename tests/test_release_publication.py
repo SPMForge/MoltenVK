@@ -25,6 +25,16 @@ spec.loader.exec_module(module)
 
 
 class ReleasePublicationTests(unittest.TestCase):
+    def test_initial_orphan_name_is_reserved_before_inspecting_target(self):
+        with patch.object(module, 'list_remote_tag_names', return_value=[]), \
+             patch.object(module, 'list_github_release_tags', return_value=['1.2.3-alpha.1']), \
+             patch.object(module.release_inputs, 'find_available_alpha', return_value={
+                 'tag': '1.2.3-alpha.3', 'occupied_tags': ['1.2.3-alpha.1', '1.2.3-alpha.2'], 'reason': 'reserved'}), \
+             patch.object(module, 'fetch_github_release', return_value=None):
+            plan = module.resolve_release_plan('requested', 'alpha', 'v1.2.3', 'SPMForge/MoltenVK', reserve_alpha_names=True)
+        self.assertEqual(plan.target_version, '1.2.3-alpha.3')
+        self.assertEqual(plan.publication_mode, 'create')
+
     def stub_release(
         self,
         *,
