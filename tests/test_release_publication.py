@@ -34,6 +34,7 @@ class ReleasePublicationTests(unittest.TestCase):
             plan = module.resolve_release_plan('requested', 'alpha', 'v1.2.3', 'SPMForge/MoltenVK', reserve_alpha_names=True)
         self.assertEqual(plan.target_version, '1.2.3-alpha.3')
         self.assertEqual(plan.publication_mode, 'create')
+        self.assertEqual(plan.next_alpha_version, '1.2.3-alpha.3')
 
     def stub_release(
         self,

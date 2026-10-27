@@ -529,7 +529,8 @@ def resolve_release_plan(
     if reserve_alpha_names:
         target_version = release_inputs.find_available_alpha(
             SCRIPT_DIR.parents[1], repo, target_version, release_inputs.increment_alpha_tag)['tag']
-    return inspect_target_state(repo, upstream_ref, target_version, release_channel, set(remote_tag_names))
+    plan = inspect_target_state(repo, upstream_ref, target_version, release_channel, set(remote_tag_names))
+    return replace(plan, next_alpha_version=target_version) if reserve_alpha_names else plan
 
 
 def copy_and_remove_source(source: Path, destination: Path) -> None:
@@ -697,6 +698,12 @@ def command_plan(args: argparse.Namespace) -> int:
             plan = replace(plan, target_version=allocation['tag'], build_version=allocation['tag'],
                            publication_mode='create', release_action='create', release_exists=False,
                            missing_assets=sorted(required_release_assets(allocation['tag'])))
+    resolved_build = getattr(args, 'resolved_build_version', '')
+    if resolved_build:
+        if (plan.build_version or plan.target_version) != resolved_build:
+            fail('Publication candidate changed after Resolve; rerun resolution.')
+        if plan.remote_tag_exists and (plan.target_version != resolved_build or getattr(args, 'resolved_remote_tag_exists', '') == 'false'):
+            fail('Alpha name became occupied after Resolve; preserve public state and rerun.')
     outputs = plan.as_output_map()
     if args.github_output:
         write_github_output(Path(args.github_output), outputs)
@@ -735,6 +742,8 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--rendered-workspace-root", default="")
     plan_parser.add_argument("--reserve-alpha-names", action="store_true")
     plan_parser.add_argument("--reserved-next-alpha-version", default="")
+    plan_parser.add_argument("--resolved-build-version", default="")
+    plan_parser.add_argument("--resolved-remote-tag-exists", default="")
     plan_parser.add_argument("--github-output", default="")
     plan_parser.set_defaults(func=command_plan)
 

@@ -431,6 +431,8 @@ jobs:
             --upstream-ref "${RESOLVED_UPSTREAM_REF}" \
             --repo "$GITHUB_REPOSITORY" \
             --reserved-next-alpha-version "${{ needs.resolve.outputs.next_alpha_version }}" \
+            --resolved-build-version "${{ needs.resolve.outputs.build_version }}" \
+            --resolved-remote-tag-exists "${{ needs.resolve.outputs.remote_tag_exists }}" \
             --rendered-package-swift "$GITHUB_WORKSPACE/Package.swift" \
             --rendered-workspace-root "$GITHUB_WORKSPACE" \
             --github-output "$GITHUB_OUTPUT"
