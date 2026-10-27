@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "upstream_commit": "db66022459ffb663aa2b50f6b018bc2e124f5edf",
+  "upstream_repository": "https://github.com/KhronosGroup/MoltenVK.git",
+  "upstream_tag": "v1.4.2",
+  "wrapper_inputs_sha256": "244ada5f3187de818fedbca7375aa7e59274cae1fe0db38980448a7218262ebf"
+}
